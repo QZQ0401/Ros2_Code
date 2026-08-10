@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    state_watchdog_ms: 100
+    command_watchdog_ms: 100
+    expected_update_rate_hz: 250
+    warn_overrun_ratio: 0.001

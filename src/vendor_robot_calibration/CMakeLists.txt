@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.8)
+project(vendor_robot_calibration)
+find_package(ament_cmake REQUIRED)
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
+install(PROGRAMS scripts/validate_calibration.py DESTINATION lib/${PROJECT_NAME})
+ament_package()

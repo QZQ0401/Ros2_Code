@@ -1,0 +1,9 @@
+bool power_on
+bool enable
+---
+bool success
+int32 error_code
+string message
+---
+string stage
+float32 progress

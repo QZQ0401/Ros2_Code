@@ -1,0 +1,7 @@
+<library path="vendor_robot_hardware">
+  <class name="vendor_robot_hardware/RtdeSystem"
+         type="vendor_robot_hardware::RtdeSystem"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>Lifecycle-safe, non-blocking RTDE ros2_control system.</description>
+  </class>
+</library>

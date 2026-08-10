@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vendor_robot_calibration</name>
+  <version>0.1.12</version>
+  <description>Robot serial and kinematic calibration identity validation.</description>
+  <maintainer email="ros2-maintainers@vendor.invalid">Robot Driver Team</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

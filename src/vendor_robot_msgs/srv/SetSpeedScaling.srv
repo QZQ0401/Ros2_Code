@@ -1,0 +1,5 @@
+float64 scaling
+---
+bool success
+int32 error_code
+string message

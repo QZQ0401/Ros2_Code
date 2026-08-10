@@ -1,0 +1,11 @@
+<library path="vendor_robot_controllers">
+  <class name="vendor_robot_controllers/IOAndStatusController"
+         type="vendor_robot_controllers::IOAndStatusController"
+         base_class_type="controller_interface::ControllerInterface"/>
+  <class name="vendor_robot_controllers/DriverStatusBroadcaster"
+         type="vendor_robot_controllers::DriverStatusBroadcaster"
+         base_class_type="controller_interface::ControllerInterface"/>
+  <class name="vendor_robot_controllers/SpeedScalingBroadcaster"
+         type="vendor_robot_controllers::SpeedScalingBroadcaster"
+         base_class_type="controller_interface::ControllerInterface"/>
+</library>

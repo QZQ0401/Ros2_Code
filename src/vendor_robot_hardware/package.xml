@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vendor_robot_hardware</name>
+  <version>0.1.12</version>
+  <description>ros2_control hardware plugin for the G4 RTDE controller.</description>
+  <maintainer email="ros2-maintainers@vendor.invalid">Robot Driver Team</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>hardware_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>vendor_robot_driver_core</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+    <hardware_interface plugin="${prefix}/vendor_robot_hardware.xml"/>
+  </export>
+</package>

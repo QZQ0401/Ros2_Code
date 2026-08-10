@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vendor_robot_driver_core</name>
+  <version>0.1.12</version>
+  <description>ROS-independent RTDE transport, watchdog and reconnect state machine.</description>
+  <maintainer email="ros2-maintainers@vendor.invalid">Robot Driver Team</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

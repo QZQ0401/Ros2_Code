@@ -1,0 +1,121 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="g4_ros2_control"
+    params="name prefix use_fake_hardware use_simulation robot_ip network_interface rtde_frequency rtde_protocol_version initial_state_timeout_ms initial_positions_file">
+    <xacro:property name="initial_positions"
+      value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <xacro:if value="${use_simulation}">
+          <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </xacro:if>
+        <xacro:unless value="${use_simulation}">
+          <xacro:if value="${use_fake_hardware}">
+            <plugin>mock_components/GenericSystem</plugin>
+            <param name="calculate_dynamics">false</param>
+          </xacro:if>
+          <xacro:unless value="${use_fake_hardware}">
+            <plugin>vendor_robot_hardware/RtdeSystem</plugin>
+            <param name="robot_ip">${robot_ip}</param>
+            <param name="network_interface">${network_interface}</param>
+            <param name="rtde_frequency">${rtde_frequency}</param>
+            <param name="io_poll_rate_hz">10</param>
+            <param name="rtde_protocol_version">${rtde_protocol_version}</param>
+            <!-- servoj 一阶低通截止频率。数值越低越平滑但跟随滞后越大：
+                 20 rad/s ≈ 3.2 Hz 滤波过重，改为 50 rad/s ≈ 8 Hz。
+                 这是需要在真机上试的参数：抖动就调低，跟随误差大就调高。 -->
+            <param name="servoj_cutoff_frequency">50.0</param>
+            <param name="command_watchdog_ms">100</param>
+            <!-- 状态超过 watchdog 后立即禁止运动并请求 servo_stop，但保留硬件组件和
+                 RTDE worker 自动重连。连续超龄达到 max_stale_state_cycles 后锁存人工
+                 恢复要求；重连后连续收到 recovery_stable_cycles 个真实帧才允许重新激活。 -->
+            <param name="state_watchdog_ms">100</param>
+            <param name="max_stale_state_cycles">5</param>
+            <param name="recovery_stable_cycles">10</param>
+            <param name="initial_state_timeout_ms">${initial_state_timeout_ms}</param>
+            <param name="max_consecutive_errors">3</param>
+            <!-- 跟随误差仅用于告警监控；servoj 透传天然滞后，不作为故障判据 -->
+            <param name="max_position_error_rad">1.0</param>
+            <param name="position_error_is_fatal">false</param>
+            <!-- 以下三项为命令限幅门限（超限做 saturation，不再判故障），
+                 与 URDF 关节限制对齐：joint1~3 3.65 rad/s，joint4~6 6.28 rad/s -->
+            <param name="max_velocity_rad_s">6.5</param>
+            <param name="max_acceleration_rad_s2">40.0</param>
+            <param name="max_cycle_delta_rad">0.05</param>
+            <!-- RTDE IO 默认关闭。cd_rtde_*digitalout_set 与 250 Hz 状态流
+                 共用同一 RTDE 线程和 socket，同步阻塞会饿死 receive_state()。
+                 IO 请通过 SDK 管理通道设置：
+                 ros2 service call /sdk_manager/set_sdk_io -->
+            <param name="use_rtde_io">false</param>
+            <param name="stop_deceleration_deg_s2">30.0</param>
+          </xacro:unless>
+        </xacro:unless>
+      </hardware>
+
+      <xacro:macro name="controlled_joint" params="joint">
+        <joint name="${prefix}${joint}">
+          <command_interface name="position"/>
+          <state_interface name="position">
+            <param name="initial_value">${initial_positions[joint]}</param>
+          </state_interface>
+          <state_interface name="velocity"/>
+          <state_interface name="acceleration"/>
+        </joint>
+      </xacro:macro>
+      <xacro:controlled_joint joint="joint1"/>
+      <xacro:controlled_joint joint="joint2"/>
+      <xacro:controlled_joint joint="joint3"/>
+      <xacro:controlled_joint joint="joint4"/>
+      <xacro:controlled_joint joint="joint5"/>
+      <xacro:controlled_joint joint="joint6"/>
+
+      <gpio name="speed_scaling">
+        <command_interface name="speed_scaling_factor"/>
+        <state_interface name="speed_scaling_factor"/>
+      </gpio>
+      <gpio name="gpio">
+        <xacro:macro name="controller_io" params="index">
+          <command_interface name="standard_digital_output_${index}"/>
+          <command_interface name="standard_digital_output_${index}_write_sequence"/>
+          <command_interface name="configurable_digital_output_${index}"/>
+          <command_interface name="configurable_digital_output_${index}_write_sequence"/>
+          <state_interface name="standard_digital_input_${index}"/>
+          <state_interface name="configurable_digital_input_${index}"/>
+          <state_interface name="standard_digital_output_${index}"/>
+          <state_interface name="configurable_digital_output_${index}"/>
+        </xacro:macro>
+        <xacro:controller_io index="0"/><xacro:controller_io index="1"/>
+        <xacro:controller_io index="2"/><xacro:controller_io index="3"/>
+        <xacro:controller_io index="4"/><xacro:controller_io index="5"/>
+        <xacro:controller_io index="6"/><xacro:controller_io index="7"/>
+        <xacro:macro name="tool_io" params="index">
+          <command_interface name="tool_digital_output_${index}"/>
+          <command_interface name="tool_digital_output_${index}_write_sequence"/>
+          <state_interface name="tool_digital_input_${index}"/>
+          <state_interface name="tool_digital_output_${index}"/>
+        </xacro:macro>
+        <xacro:tool_io index="0"/><xacro:tool_io index="1"/>
+        <xacro:tool_io index="2"/><xacro:tool_io index="3"/>
+        <xacro:tool_io index="4"/><xacro:tool_io index="5"/>
+        <xacro:tool_io index="6"/><xacro:tool_io index="7"/>
+        <xacro:tool_io index="8"/><xacro:tool_io index="9"/>
+      </gpio>
+      <sensor name="driver">
+        <state_interface name="connection_state"/>
+        <state_interface name="state_age_ms"/>
+        <state_interface name="overrun_count"/>
+        <state_interface name="reconnect_count"/>
+        <state_interface name="control_cycle_count"/>
+        <state_interface name="last_cycle_ms"/>
+        <state_interface name="max_cycle_ms"/>
+        <state_interface name="command_fresh"/>
+        <state_interface name="last_rtde_error"/>
+        <state_interface name="read_error_count"/>
+        <state_interface name="write_error_count"/>
+        <state_interface name="safety_stop_latched"/>
+        <state_interface name="rejected_command_count"/>
+        <state_interface name="servo_skipped"/>
+      </sensor>
+    </ros2_control>
+  </xacro:macro>
+</robot>

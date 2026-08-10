@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vendor_robot_description</name>
+  <version>0.1.12</version>
+  <description>
+    Prefix-aware G4 URDF and unified real/fake/simulation ros2_control xacro.
+  </description>
+
+  <maintainer email="ros2-maintainers@vendor.invalid">
+    Robot Driver Team
+  </maintainer>
+
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ros2_control</exec_depend>
+  <exec_depend>urdf</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+
+    <!-- 将 share 目录加入 Gazebo 模型搜索路径，
+         使 package://vendor_robot_description/... 可以被解析 -->
+    <gazebo_ros gazebo_model_path="${prefix}/.."/>
+  </export>
+</package>

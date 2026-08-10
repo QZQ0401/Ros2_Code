@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vendor_robot_controllers</name>
+  <version>0.1.12</version>
+  <description>IO, speed scaling and driver diagnostics ros2_control controllers.</description>
+  <maintainer email="ros2-maintainers@vendor.invalid">Robot Driver Team</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>controller_interface</depend>
+  <depend>controller_manager_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>realtime_tools</depend>
+  <depend>std_srvs</depend>
+  <depend>std_msgs</depend>
+  <depend>vendor_robot_sdk_vendor</depend>
+  <depend>vendor_robot_driver_core</depend>
+  <depend>vendor_robot_msgs</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+    <controller_interface plugin="${prefix}/vendor_robot_controllers.xml"/>
+  </export>
+</package>

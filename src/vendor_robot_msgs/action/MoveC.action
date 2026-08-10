@@ -1,0 +1,13 @@
+geometry_msgs/PoseStamped via
+geometry_msgs/PoseStamped target
+float64 velocity
+float64 acceleration
+float64 blend_radius
+bool fixed_orientation
+---
+bool success
+int32 error_code
+string message
+---
+float32 progress
+geometry_msgs/PoseStamped actual

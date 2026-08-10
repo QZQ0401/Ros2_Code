@@ -1,0 +1,10 @@
+uint8 STANDARD_DIGITAL_OUT=0
+uint8 CONFIGURABLE_DIGITAL_OUT=1
+uint8 TOOL_DIGITAL_OUT=2
+uint8 domain
+uint8 channel
+bool value
+---
+bool success
+int32 error_code
+string message

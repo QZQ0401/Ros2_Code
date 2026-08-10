@@ -1,0 +1,11 @@
+float64[] joint_positions
+float64 velocity
+float64 acceleration
+float64 blend_radius
+---
+bool success
+int32 error_code
+string message
+---
+float32 progress
+float64[] actual_positions
