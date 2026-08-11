@@ -1,0 +1,6 @@
+# Ignore everything at the repository root by default.
+/*
+
+# Keep the source tree and this ignore file under version control.
+!/.gitignore
+!/src/
