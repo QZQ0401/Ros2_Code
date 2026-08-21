@@ -8,6 +8,14 @@
 - `DriverStatusBroadcaster`：驱动健康状态；
 - `SpeedScalingBroadcaster`：速度比例缓存状态；
 - `sdk_manager_node`：低频 SDK 管理与 RobotMode；
+
+### SDK 运动与 RTDE `servoj` 的互斥
+
+SDK 的 Movex、MoveJ、MoveL 等运动接口不通过 ROS 2 Action 暴露。它们和 RTDE
+`servoj` 会争用控制柜运动权，无法与已启动的 ROS 2 实时控制链路可靠隔离。因此只能
+在 `ros2_control`、MoveIt、`sdk_manager_node` 等 ROS 2 控制节点均未运行时，使用
+`vendor_robot_sdk_vendor` 中的独立 SDK 程序。完成 SDK 运动后，应重启完整 ROS 2
+控制链路再使用 `arm_controller`。
 - `controller_stopper_node`：根据模式和 watchdog 自动停/恢复运动 controller；
 - `diagnostics_bridge_node`：转换为标准 `/diagnostics`。
 
@@ -260,5 +268,3 @@ ros2 service call /set_payload vendor_robot_msgs/srv/SetPayload \
 | `controllers` | `[arm_controller]` | 管理的控制器 |
 
 点动、示教、反驱、控制器程序运行或安全状态不允许时会停用 JTC。SDK_MOVING 默认视为本 RTDE 驱动自身运动。
-
-

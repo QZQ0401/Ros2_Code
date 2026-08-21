@@ -7,7 +7,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -185,6 +184,7 @@ public:
   }
 
 private:
+
   bool ensure_connected()
   {
     if (handle_ >= 0) {

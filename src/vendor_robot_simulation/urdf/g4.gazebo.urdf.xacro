@@ -3,6 +3,8 @@
        name="g4_gazebo">
 
   <xacro:arg name="prefix" default=""/>
+  <!-- Set false when this arm is mounted on a mobile base. -->
+  <xacro:arg name="fixed_base" default="true"/>
 
   <xacro:arg
     name="initial_positions_file"
@@ -37,13 +39,14 @@
     因此这里必须把 world 固定到 base，
     不能再把 world 连接到 base_link，否则 base_link 会有两个父关节。
   -->
-  <link name="world"/>
-
-  <joint name="${prefix}world_to_base" type="fixed">
-    <parent link="world"/>
-    <child link="${prefix}base"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
-  </joint>
+  <xacro:if value="$(arg fixed_base)">
+    <link name="world"/>
+    <joint name="${prefix}world_to_base" type="fixed">
+      <parent link="world"/>
+      <child link="${prefix}base"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
 
   <!-- 为每一个 Link 添加 Gazebo 专用属性 -->
   <xacro:macro name="gazebo_link_properties" params="link_name">

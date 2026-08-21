@@ -14,8 +14,9 @@ from launch.actions import (
 )
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
@@ -105,21 +106,18 @@ def _setup(context):
         }.items(),
     )
 
-    # MoveIt 使用通用机器人运动学模型。
-    # Gazebo 节点仍由 simulation.launch.py 使用 Gazebo 专用 URDF。
+    # MoveIt 与 Gazebo 必须使用同一组合模型（移动底盘、机械臂和深度相机）。
+    simulation_urdf = simulation_share / "urdf" / "g4_mobile_depth.gazebo.urdf.xacro"
+    mobile_robot_description = ParameterValue(Command([
+        FindExecutable(name="xacro"), " ", str(simulation_urdf),
+        " prefix:=", prefix, " use_gravity:=", use_gravity,
+    ]), value_type=str)
     moveit_config = (
         MoveItConfigsBuilder(
             "G4",
             package_name="vendor_robot_moveit_config",
         )
-        .robot_description(
-            file_path="config/G4.urdf.xacro",
-            mappings={
-                "prefix": prefix,
-                "use_fake_hardware": "true",
-                "use_simulation": "false",
-            },
-        )
+        .robot_description(file_path="config/G4.urdf.xacro", mappings={"prefix": prefix})
         .robot_description_semantic(
             file_path="config/G4.srdf.xacro",
             mappings={"prefix": prefix},
@@ -161,6 +159,7 @@ def _setup(context):
 
     common_parameters = [
         moveit_config.to_dict(),
+        {"robot_description": mobile_robot_description},
         runtime_parameters,
     ]
 

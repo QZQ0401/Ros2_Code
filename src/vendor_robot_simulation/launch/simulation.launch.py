@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, ExecuteProcess, RegisterEventHandler
-from launch.event_handlers import OnShutdown
+from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
@@ -20,7 +20,7 @@ def _setup(context):
     description = Path(
         simulation_share
         /"urdf"
-        /"g4.gazebo.urdf.xacro"
+        /"g4_mobile_depth.gazebo.urdf.xacro"
         )
     robot_description = ParameterValue(Command([
         FindExecutable(name="xacro"), " ", str(description),
@@ -30,20 +30,32 @@ def _setup(context):
     #     "config", "controllers.yaml")
     gazebo_launch = Path(
         FindPackageShare("gazebo_ros").perform(context), "launch", "gazebo.launch.py")
+    spawn_entity = Node(
+        package="gazebo_ros", executable="spawn_entity.py",
+        arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", "0.0"],
+        output="screen")
+    joint_state_spawner = Node(
+        package="controller_manager", executable="spawner",
+        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+        output="screen")
+    arm_spawner = Node(
+        package="controller_manager", executable="spawner",
+        arguments=["arm_controller", "--controller-manager", "/controller_manager"],
+        output="screen")
+
     return [
         IncludeLaunchDescription(PythonLaunchDescriptionSource(str(gazebo_launch))),
         Node(package="robot_state_publisher", executable="robot_state_publisher",
              parameters=[{"robot_description": robot_description, "use_sim_time": True,}], output="screen"),
-        Node(package="gazebo_ros", executable="spawn_entity.py",
-             arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", "0.0",], output="screen"),
-        # Node(package="controller_manager", executable="ros2_control_node",
-        #      parameters=[{"robot_description": robot_description},
-        #                  str(controller_yaml)],
-        #      output="screen"),
-        Node(package="controller_manager", executable="spawner",
-             arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"]),
-        Node(package="controller_manager", executable="spawner",
-             arguments=["arm_controller", "--controller-manager", "/controller_manager"]),
+        spawn_entity,
+        # gazebo_ros2_control is a model plugin: /controller_manager does not
+        # exist until spawn_entity has inserted the URDF into gzserver.
+        RegisterEventHandler(OnProcessExit(
+            target_action=spawn_entity,
+            on_exit=[joint_state_spawner])),
+        RegisterEventHandler(OnProcessExit(
+            target_action=joint_state_spawner,
+            on_exit=[arm_spawner])),
     ]
 
 

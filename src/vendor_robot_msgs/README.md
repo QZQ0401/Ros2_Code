@@ -201,4 +201,3 @@ ros2 action send_goal --feedback /recover_robot \
 | SetIO、SetSpeedScaling、SetPayload | 已有 service server |
 | MoveL | 已有 action server，但需 MoveIt 启动 |
 | MoveJ、MoveC、RecoverRobot | 仅定义 |
-
