@@ -398,4 +398,9 @@
       effort="32.4"
       velocity="6.28" />
   </joint>
+
+  <xacro:include filename="gripper.xacro"/>
+  <xacro:wsg_50_gripper prefix="${prefix}" parent="${prefix}Link6">
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+  </xacro:wsg_50_gripper>
 </robot>

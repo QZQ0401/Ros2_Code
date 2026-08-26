@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<!-- Pure WSG-50 robot description. Gazebo content stays in vendor_robot_simulation. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="wsg_50_gripper" params="prefix parent *origin">
+    <joint name="${prefix}link6_to_gripper" type="fixed">
+      <insert_block name="origin"/>
+      <parent link="${parent}"/><child link="${prefix}gripper_base_link"/>
+    </joint>
+
+    <link name="${prefix}gripper_base_link">
+      <inertial>
+        <origin xyz="0 0 0"/>
+        <mass value="0.25"/>
+        <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+      </inertial>
+      <visual>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/WSG50_110.stl"/>
+        </geometry>
+        <material name="wsg_grey">
+          <color rgba="0.6 0.6 0.6 1"/>
+        </material>
+      </visual>
+      <collision><geometry><mesh filename="package://vendor_robot_description/meshes/WSG50_110.stl"/></geometry></collision>
+    </link>
+
+    <!-- Single commanded coordinate: -55 mm open, -2.7 mm nearly closed. -->
+    <joint name="${prefix}gripper_left_joint" type="prismatic">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <parent link="${prefix}gripper_base_link"/>
+      <child link="${prefix}gripper_left_link"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="-0.055" upper="-0.0027" effort="100" velocity="1.0"/>
+      <dynamics damping="100" friction="100"/>
+    </joint>
+    <link name="${prefix}gripper_left_link">
+      <inertial>
+        <origin xyz="0 0 0"/>
+        <mass value="0.1"/>
+        <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+      </inertial>
+      <visual>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/GUIDE_WSG50_110.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="wsg_blue">
+          <color rgba="0 0.2 0.8 1"/>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/GUIDE_WSG50_110.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}gripper_left_finger_joint" type="fixed">
+      <origin xyz="0 0 0.023" rpy="0 0 0"/>
+      <parent link="${prefix}gripper_left_link"/>
+      <child link="${prefix}gripper_left_finger"/>
+    </joint>
+
+    <link name="${prefix}gripper_left_finger">
+      <inertial>
+        <origin xyz="0 0 0"/>
+        <mass value="0.1"/>
+        <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+      </inertial>
+      <visual>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/WSG-FMF.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="wsg_black">
+          <color rgba="0.06 0.06 0.06 1"/>
+        </material>
+      </visual>
+      <collision><geometry><mesh filename="package://vendor_robot_description/meshes/WSG-FMF.stl" scale="0.001 0.001 0.001"/></geometry></collision>
+    </link>
+
+    <!-- The physical second guide follows the commanded left coordinate. -->
+    <joint name="${prefix}gripper_right_joint" type="prismatic">
+      <origin xyz="0 0 0" rpy="0 0 3.14159265359"/>
+      <parent link="${prefix}gripper_base_link"/>
+      <child link="${prefix}gripper_right_link"/>
+      <axis xyz="-1 0 0"/>
+      <limit lower="0.0027" upper="0.055" effort="100" velocity="1.0"/>
+      <dynamics damping="100" friction="100"/>
+      <mimic joint="${prefix}gripper_left_joint" multiplier="-1" offset="0"/>
+    </joint>
+    <link name="${prefix}gripper_right_link">
+      <inertial>
+        <origin xyz="0 0 0"/>
+        <mass value="0.1"/>
+        <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+      </inertial>
+      <visual>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/GUIDE_WSG50_110.stl" scale="0.001 0.001 0.001"/>
+        </geometry><material name="wsg_blue"/>
+      </visual>
+      <collision>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/GUIDE_WSG50_110.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+    <joint name="${prefix}gripper_right_finger_joint" type="fixed">
+      <origin xyz="0 0 0.023" rpy="0 0 0"/>
+      <parent link="${prefix}gripper_right_link"/>
+      <child link="${prefix}gripper_right_finger"/>
+    </joint>
+    <link name="${prefix}gripper_right_finger">
+      <inertial>
+        <origin xyz="0 0 0"/>
+        <mass value="0.1"/>
+        <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+      </inertial>
+      <visual>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/WSG-FMF.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="wsg_black"/>
+      </visual>
+      <collision>
+        <geometry>
+          <mesh filename="package://vendor_robot_description/meshes/WSG-FMF.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+</robot>

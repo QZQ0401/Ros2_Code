@@ -20,8 +20,8 @@ from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
-# 等待 Gazebo 中的 arm_controller 完成加载和激活。
-# 这样可以避免 move_group 启动过早，未发现 FollowJointTrajectory 动作服务器。
+# 等待 Gazebo 中的机械臂和夹爪控制器完成加载和激活。
+# 这样可避免 move_group 启动过早，未发现对应动作服务器。
 _WAIT_FOR_CONTROLLER_SCRIPT = r"""
 manager="$1"
 timeout="$2"
@@ -38,9 +38,21 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     grep -E '^/arm_controller/follow_joint_trajectory$' || true
   )
 
-  if [ -n "$line" ] && [ -n "$action" ]; then
-    echo "[wait_for_gazebo_controller] 控制器已激活: $line"
-    echo "[wait_for_gazebo_controller] 动作服务器已就绪: $action"
+  gripper_line=$(
+    ros2 control list_controllers       --controller-manager "$manager" 2>/dev/null |
+    grep -E '^gripper_controller[[:space:]].*[[:space:]]active$' || true
+  )
+
+  gripper_action=$(
+    ros2 action list 2>/dev/null |
+    grep -E '^/gripper_controller/gripper_cmd$' || true
+  )
+
+  if [ -n "$line" ] && [ -n "$action" ] && [ -n "$gripper_line" ] && [ -n "$gripper_action" ]; then
+    echo "[wait_for_gazebo_controller] 机械臂控制器已激活: $line"
+    echo "[wait_for_gazebo_controller] 机械臂动作服务器已就绪: $action"
+    echo "[wait_for_gazebo_controller] 夹爪控制器已激活: $gripper_line"
+    echo "[wait_for_gazebo_controller] 夹爪动作服务器已就绪: $gripper_action"
     exit 0
   fi
 
@@ -49,7 +61,7 @@ done
 
 echo "[wait_for_gazebo_controller] 等待 ${timeout}s 超时。" >&2
 echo "[wait_for_gazebo_controller] 仍将启动 MoveIt，" >&2
-echo "[wait_for_gazebo_controller] 但执行轨迹前请确认 arm_controller 为 active。" >&2
+echo "[wait_for_gazebo_controller] 但执行前请确认 arm_controller 和 gripper_controller 均为 active。" >&2
 exit 0
 """
 
@@ -68,6 +80,7 @@ def _value(context, name: str) -> str:
 def _setup(context):
     prefix = _value(context, "prefix")
     use_gravity = _value(context, "use_gravity")
+    world = _value(context, "world")
     start_rviz = _as_bool(_value(context, "start_rviz"), "start_rviz")
     start_move_l_server = _as_bool(
         _value(context, "start_move_l_server"),
@@ -103,6 +116,7 @@ def _setup(context):
         launch_arguments={
             "prefix": prefix,
             "use_gravity": use_gravity,
+            "world": world,
         }.items(),
     )
 
@@ -130,6 +144,9 @@ def _setup(context):
         )
         .trajectory_execution(
             file_path="config/moveit_controllers.yaml"
+        )
+        .sensors_3d(
+            file_path="config/sensors_3d.yaml"
         )
         .planning_pipelines(
             pipelines=["ompl"]
@@ -169,6 +186,20 @@ def _setup(context):
             executable="move_group",
             output="screen",
             parameters=common_parameters,
+        ),
+        Node(
+            package="vendor_robot_simulation",
+            executable="gazebo_planning_scene_sync.py",
+            name="gazebo_planning_scene_sync",
+            output="screen",
+            parameters=[
+                {"use_sim_time": True},
+                {"world_frame": "odom"},
+                {"obstacle_models": ["work_table"]},
+                {"pick_models": ["grasp_box"]},
+                {"table_size": [1.2, 0.8, 0.8]},
+                {"grasp_box_size": [0.05, 0.05, 0.05]},
+            ],
         ),
     ]
 
@@ -237,6 +268,11 @@ def _setup(context):
 
 
 def generate_launch_description():
+    default_world = Path(
+        get_package_share_directory("vendor_robot_simulation"),
+        "world",
+        "pick_scene.world",
+    )
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -248,6 +284,11 @@ def generate_launch_description():
                 "use_gravity",
                 default_value="false",
                 description="是否在 Gazebo 中启用各 Link 的重力",
+            ),
+            DeclareLaunchArgument(
+                "world",
+                default_value=str(default_world),
+                description="Gazebo world 文件；默认加载带桌子和箱子的 pick_scene.world",
             ),
             DeclareLaunchArgument(
                 "start_rviz",
@@ -267,7 +308,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "wait_for_controller_timeout",
                 default_value="60",
-                description="等待 Gazebo arm_controller 就绪的最长秒数",
+                description="等待 Gazebo 的机械臂与夹爪控制器就绪的最长秒数",
             ),
             DeclareLaunchArgument(
                 "allowed_start_tolerance",

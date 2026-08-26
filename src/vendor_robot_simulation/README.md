@@ -19,6 +19,15 @@ ros2 topic list | grep depth_camera
 
 预期可见 `/odom`、`/tf`、`/depth_camera/image_raw`、`/depth_camera/depth/image_raw` 和 `/depth_camera/points`。相机安装位姿在 xacro 的 `link6_to_depth_camera` 固定关节中，可按实际工具安装板调整。
 
+夹爪模型来自 `vendor_robot_description/urdf/gripper.xacro`；Gazebo 的关节接口和控制器仅在本包定义。`gripper_controller` 控制 `gripper_left_joint`，右侧导轨按 `multiplier=-1` 跟随。测试开合：
+
+```bash
+ros2 action send_goal /gripper_controller/gripper_cmd control_msgs/action/GripperCommand \
+  "{command: {position: -0.055, max_effort: 50.0}}"
+```
+
+`position=-0.055` 为打开位置，接近 `-0.0027` 为闭合位置。
+
 启动时，`spawn_entity` 成功插入模型后，Gazebo 的 `gazebo_ros2_control` 插件才会创建 `/controller_manager`；launch 会依次启动 `joint_state_broadcaster` 和 `arm_controller`。若仍没有 `/controller_manager/list_controllers`，请先查找 `gzserver` 在 `spawn_entity` 输出后的第一条 `gazebo_ros2_control` 错误，而不是 spawner 的等待日志。
 
 仿真验证 ROS 图、轨迹控制和模型，无法验证 RTDE、SDK、网络重连、控制柜安全状态或 `servoj` 实时行为。
@@ -65,6 +74,14 @@ ros2 launch vendor_robot_simulation moveit_gazebo_in_simulation.launch.py
 启动成功之后弹出界面：
 ![alt text](doc/gazebo2.png)
 
+联合启动还会运行 `gazebo_planning_scene_sync`：它监听 `/gazebo/model_states`，将
+`work_table`（固定障碍物）和 `grasp_box`（待抓取物）同步为 MoveIt 的
+`CollisionObject`。两者分别使用 `gazebo_work_table` 和 `gazebo_grasp_box` ID；
+抓取流程中应将后者从 world object 替换为 `AttachedCollisionObject`，松爪后再恢复。
+同步节点默认使用 `odom` 作为世界坐标系和以下尺寸：桌子 `1.2 x 0.8 x 0.8 m`、
+目标箱 `0.05 x 0.05 x 0.05 m`。如需增加模型，可通过节点参数 `obstacle_models`、
+`pick_models` 和对应尺寸参数扩展。
+
 之后可以进行moveit2和gazebo的仿真控制
 
 ```bash
@@ -85,5 +102,3 @@ ros2 launch vendor_robot_simulation simulation.launch.py prefix:=
 ```
 
 传入非空 prefix 会直接报错，因为 controller YAML 使用未加前缀的 joint 名。
-
-

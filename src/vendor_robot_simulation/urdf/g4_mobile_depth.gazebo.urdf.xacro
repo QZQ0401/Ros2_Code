@@ -20,10 +20,18 @@
       <material>Gazebo/White</material><self_collide>false</self_collide><gravity>$(arg use_gravity)</gravity>
     </gazebo>
   </xacro:macro>
-  <xacro:arm_gazebo_properties link_name="base_link"/><xacro:arm_gazebo_properties link_name="Link1"/>
-  <xacro:arm_gazebo_properties link_name="Link2"/><xacro:arm_gazebo_properties link_name="Link3"/>
-  <xacro:arm_gazebo_properties link_name="Link4"/><xacro:arm_gazebo_properties link_name="Link5"/>
+  <xacro:arm_gazebo_properties link_name="base_link"/>
+  <xacro:arm_gazebo_properties link_name="Link1"/>
+  <xacro:arm_gazebo_properties link_name="Link2"/>
+  <xacro:arm_gazebo_properties link_name="Link3"/>
+  <xacro:arm_gazebo_properties link_name="Link4"/>
+  <xacro:arm_gazebo_properties link_name="Link5"/>
   <xacro:arm_gazebo_properties link_name="Link6"/>
+  <xacro:arm_gazebo_properties link_name="gripper_base_link"/>
+  <xacro:arm_gazebo_properties link_name="gripper_left_link"/>
+  <xacro:arm_gazebo_properties link_name="gripper_right_link"/>
+  <xacro:arm_gazebo_properties link_name="gripper_left_finger"/>
+  <xacro:arm_gazebo_properties link_name="gripper_right_finger"/>
 
   <ros2_control name="${prefix}GazeboSystem" type="system">
     <hardware><plugin>gazebo_ros2_control/GazeboSystem</plugin></hardware>
@@ -34,9 +42,35 @@
         <state_interface name="velocity"/>
       </joint>
     </xacro:macro>
-    <xacro:arm_joint_interface joint_name="joint1"/><xacro:arm_joint_interface joint_name="joint2"/>
-    <xacro:arm_joint_interface joint_name="joint3"/><xacro:arm_joint_interface joint_name="joint4"/>
-    <xacro:arm_joint_interface joint_name="joint5"/><xacro:arm_joint_interface joint_name="joint6"/>
+    <xacro:arm_joint_interface joint_name="joint1"/>
+    <xacro:arm_joint_interface joint_name="joint2"/>
+    <xacro:arm_joint_interface joint_name="joint3"/>
+    <xacro:arm_joint_interface joint_name="joint4"/>
+    <xacro:arm_joint_interface joint_name="joint5"/>
+    <xacro:arm_joint_interface joint_name="joint6"/>
+    <!-- The model owns the mimic declaration; Gazebo owns the actuator interface. -->
+    <joint name="${prefix}gripper_left_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-0.055</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="${prefix}gripper_right_joint">
+      <param name="mimic">${prefix}gripper_left_joint</param>
+      <param name="multiplier">-1</param>
+      <!-- Mimic joints are state-only: gripper_left_joint is the sole actuator. -->
+      <state_interface name="position"/><state_interface name="velocity"/>
+    </joint>
+    <!-- The diff-drive Gazebo plugin commands these wheels.  ros2_control only
+         exports their state so robot_state_publisher and MoveIt see a complete
+         model state. -->
+    <joint name="${prefix}left_wheel_joint">
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="${prefix}right_wheel_joint">
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
   </ros2_control>
   <gazebo>
     <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
@@ -100,14 +134,14 @@
   <joint name="${prefix}link6_to_depth_camera" type="fixed">
     <parent link="${prefix}Link6"/>
     <child link="${prefix}depth_camera_link"/>
-    <origin xyz="0.08 0 0" rpy="0 0 0"/>
+    <origin xyz="0.08 0 -0.03" rpy="0 0 0"/>
   </joint>
   <link name="${prefix}depth_camera_optical_frame"/>
   <joint name="${prefix}depth_camera_optical_joint" type="fixed">
     <parent link="${prefix}depth_camera_link"/>
     <child link="${prefix}depth_camera_optical_frame"/>
     <!-- ROS optical frame: X right, Y down, Z forward. -->
-    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+    <origin xyz="0.08 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
   </joint>
 
   <gazebo reference="${prefix}depth_camera_link">
@@ -131,7 +165,10 @@
       <wheel_separation>${wheel_separation}</wheel_separation><wheel_diameter>${2.0 * wheel_radius}</wheel_diameter>
       <max_wheel_torque>20.0</max_wheel_torque><max_wheel_acceleration>4.0</max_wheel_acceleration>
       <publish_odom>true</publish_odom><publish_odom_tf>true</publish_odom_tf><publish_wheel_tf>true</publish_wheel_tf>
-      <odometry_frame>odom</odometry_frame><robot_base_frame>${prefix}mobile_base_link</robot_base_frame>
+      <!-- Publish odom -> base_footprint.  The URDF then contributes the
+           fixed base_footprint -> mobile_base_link transform, yielding one
+           connected TF tree (rather than two parents for mobile_base_link). -->
+      <odometry_frame>odom</odometry_frame><robot_base_frame>${prefix}base_footprint</robot_base_frame>
     </plugin>
   </gazebo>
 </robot>

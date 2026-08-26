@@ -11,6 +11,14 @@
     <joint name="${prefix}joint5"/>
     <joint name="${prefix}joint6"/>
   </group>
+  <!-- The right guide is a URDF mimic joint, so only the left coordinate is planned. -->
+  <group name="gripper">
+    <joint name="${prefix}gripper_left_joint"/>
+  </group>
+  <end_effector name="${prefix}gripper"
+                parent_link="${prefix}Link6"
+                group="gripper"
+                parent_group="arm"/>
 
   <group_state name="pose1" group="arm">
     <joint name="${prefix}joint1" value="0"/>
@@ -19,6 +27,12 @@
     <joint name="${prefix}joint4" value="0"/>
     <joint name="${prefix}joint5" value="0"/>
     <joint name="${prefix}joint6" value="0"/>
+  </group_state>
+  <group_state name="open" group="gripper">
+    <joint name="${prefix}gripper_left_joint" value="-0.055"/>
+  </group_state>
+  <group_state name="closed" group="gripper">
+    <joint name="${prefix}gripper_left_joint" value="-0.0027"/>
   </group_state>
 
   <disable_collisions link1="${prefix}Link1" link2="${prefix}Link2" reason="Adjacent"/>
@@ -32,4 +46,9 @@
   <disable_collisions link1="${prefix}Link4" link2="${prefix}Link5" reason="Adjacent"/>
   <disable_collisions link1="${prefix}Link4" link2="${prefix}Link6" reason="Never"/>
   <disable_collisions link1="${prefix}Link5" link2="${prefix}Link6" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}Link6" link2="${prefix}gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}gripper_base_link" link2="${prefix}gripper_left_link" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}gripper_base_link" link2="${prefix}gripper_right_link" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}gripper_left_link" link2="${prefix}gripper_left_finger" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}gripper_right_link" link2="${prefix}gripper_right_finger" reason="Adjacent"/>
 </robot>
