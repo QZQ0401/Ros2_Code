@@ -1,6 +1,7 @@
 #include <cmath>
 #include <memory>
 #include <thread>
+#include <vector>
 
 #include <Eigen/Geometry>
 
@@ -11,8 +12,10 @@
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/stages.h>
 #include <moveit/task_constructor/solvers.h>
+#include <moveit/robot_trajectory/robot_trajectory.h>
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/planning_scene/planning_scene.h>
 
 #include <moveit_msgs/msg/move_it_error_codes.hpp>
 
@@ -36,8 +39,53 @@ static constexpr char HAND_FRAME[] =
 static constexpr char OBJECT_ID[] =
     "gazebo_grasp_box";
 
+static constexpr char WORK_TABLE_ID[] =
+    "gazebo_work_table";
+
 static constexpr char WORLD_FRAME[] =
     "odom";
+
+
+// MTC Humble has no built-in Wait stage.  A two-waypoint trajectory with
+// identical arm states makes the controller actively hold position for the
+// requested duration during task execution.
+class TimedArmHold : public mtc::PropagatingEitherWay
+{
+public:
+    TimedArmHold(
+        const std::string & name,
+        double duration_seconds)
+        : mtc::PropagatingEitherWay(name),
+          duration_seconds_(duration_seconds)
+    {
+    }
+
+private:
+    bool compute(
+        const mtc::InterfaceState & state,
+        planning_scene::PlanningScenePtr & scene,
+        mtc::SubTrajectory & trajectory,
+        mtc::Interface::Direction) override
+    {
+        scene = state.scene()->diff();
+
+        auto hold_trajectory = std::make_shared<
+            robot_trajectory::RobotTrajectory>(
+                scene->getRobotModel(),
+                ARM_GROUP);
+
+        const auto & robot_state = scene->getCurrentState();
+        hold_trajectory->addSuffixWayPoint(robot_state, 0.0);
+        hold_trajectory->addSuffixWayPoint(
+            robot_state,
+            duration_seconds_);
+
+        trajectory.setTrajectory(hold_trajectory);
+        return true;
+    }
+
+    double duration_seconds_;
+};
 
 
 class MtcPickNode
@@ -51,6 +99,17 @@ public:
             std::make_shared<rclcpp::Node>(
                 "mtc_pick_demo",
                 options);
+
+        post_grasp_settle_time_ =
+            node_->declare_parameter<double>(
+                "post_grasp_settle_time",
+                1.0);
+
+        if (post_grasp_settle_time_ <= 0.0)
+        {
+            throw std::runtime_error(
+                "post_grasp_settle_time 必须大于 0 秒");
+        }
     }
 
 
@@ -289,6 +348,14 @@ private:
             setPlannerId(
                 "RRTConnectkConfigDefault");
 
+        sampling_planner->
+            setMaxVelocityScalingFactor(
+                0.2);
+
+        sampling_planner->
+            setMaxAccelerationScalingFactor(
+                0.2);
+
         // 夹爪开合使用关节插值
         auto interpolation_planner =
             std::make_shared<
@@ -427,10 +494,10 @@ private:
                 HAND_FRAME);
 
 
-            // 在方块上方8~15cm处形成pre-grasp
+            // 在方块上方20-25cm处形成pre-grasp
             stage->setMinMaxDistance(
-                0.08,
-                0.15);
+                0.15,
+                0.25);
 
 
             geometry_msgs::msg::
@@ -520,10 +587,11 @@ private:
 
 
             // 示例：
-            // 假设夹爪闭合中心距离gripper_base_link约10cm
+            // 方块中心放在距基座 14 cm 处。考虑指端固定关节的 2.3 cm
+            // 偏置后，指端仍覆盖方块中上部，且不会掠过桌面。
             grasp_frame_transform.
                 translation().z() =
-                    0.10;
+                    0.140;
 
 
             // 示例初始姿态：
@@ -596,13 +664,33 @@ private:
                         ModifyPlanningScene>(
                             "allow gripper-object collision");
 
+            // The SRDF gripper group contains the commanded left joint only.
+            // The right guide and finger are mimic links, so they are not
+            // returned by hand_group. Both fingers must be allowed to contact
+            // the object during the closing motion.
+            auto gripper_collision_links =
+                hand_group->
+                    getLinkModelNamesWithCollisionGeometry();
+
+            gripper_collision_links.emplace_back(
+                "gripper_right_link");
+
+            gripper_collision_links.emplace_back(
+                "gripper_right_finger");
 
             stage->allowCollisions(
                 OBJECT_ID,
 
-                hand_group->
-                    getLinkModelNamesWithCollisionGeometry(),
+                gripper_collision_links,
 
+                true);
+
+            // The cube starts in physical contact with the table. Gazebo and
+            // FCL both treat this zero-clearance support contact as a
+            // collision; keep it allowed until the following lift stage.
+            stage->allowCollisions(
+                OBJECT_ID,
+                WORK_TABLE_ID,
                 true);
 
 
@@ -627,14 +715,25 @@ private:
                 HAND_GROUP);
 
 
-            // SRDF中的closed状态
+            // 对 5 cm 方块使用保留约 5.4 cm 指间距的 grasp 状态；
+            // closed 是空载时两指几乎相合的状态，不能用于该物体。
             stage->setGoal(
-                "closed");
+                "grasp");
 
 
             pick->insert(
                 std::move(stage));
         }
+
+
+        // ====================================================
+        // 闭爪后保持：等待 Gazebo 接触约束稳定
+        // ====================================================
+
+        pick->insert(
+            std::make_unique<TimedArmHold>(
+                "settle gripper contact",
+                post_grasp_settle_time_));
 
 
         // ====================================================
@@ -721,6 +820,9 @@ private:
 
     rclcpp::Node::SharedPtr
         node_;
+
+    double
+        post_grasp_settle_time_;
 
     mtc::Task
         task_;

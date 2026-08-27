@@ -30,10 +30,16 @@
     <joint name="${prefix}joint6" value="0"/>
   </group_state>
   <group_state name="open" group="gripper">
-    <joint name="${prefix}gripper_left_joint" value="-0.055"/>
+    <!-- Match gazebo_ros2_control's initial gripper_left_joint state. -->
+    <joint name="${prefix}gripper_left_joint" value="-0.054"/>
   </group_state>
   <group_state name="closed" group="gripper">
     <joint name="${prefix}gripper_left_joint" value="-0.0027"/>
+  </group_state>
+  <!-- About 54 mm jaw spacing: suitable for the 50 mm gazebo_grasp_box.
+       "closed" remains the empty-gripper, fully closed state. -->
+  <group_state name="grasp" group="gripper">
+    <joint name="${prefix}gripper_left_joint" value="-0.029"/>
   </group_state>
 
   <disable_collisions link1="${prefix}Link1" link2="${prefix}Link2" reason="Adjacent"/>
@@ -52,4 +58,13 @@
   <disable_collisions link1="${prefix}gripper_base_link" link2="${prefix}gripper_right_link" reason="Adjacent"/>
   <disable_collisions link1="${prefix}gripper_left_link" link2="${prefix}gripper_left_finger" reason="Adjacent"/>
   <disable_collisions link1="${prefix}gripper_right_link" link2="${prefix}gripper_right_finger" reason="Adjacent"/>
+
+  <!-- The mobile chassis, mounted arm base, and support wheels deliberately
+       overlap in the simplified collision geometry. They are mechanically
+       connected links, so treating these pairs as self-collisions invalidates
+       every MTC grasp candidate before gripper-object contact is allowed. -->
+  <disable_collisions link1="${prefix}mobile_base_link" link2="${prefix}base_link" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}mobile_base_link" link2="${prefix}left_wheel" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}mobile_base_link" link2="${prefix}right_wheel" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}mobile_base_link" link2="${prefix}caster_wheel" reason="Adjacent"/>
 </robot>

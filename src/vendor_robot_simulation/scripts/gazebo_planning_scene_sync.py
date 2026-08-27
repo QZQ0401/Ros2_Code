@@ -56,15 +56,24 @@ class GazeboPlanningSceneSync(Node):
         self.create_subscription(
             ModelStates, "/gazebo/model_states", self._on_models, model_states_qos
         )
-        #保存当前已经附着到机器人上的物体ID，避免重复添加
+        # Keep IDs currently attached to the robot out of the world-object
+        # synchronization stream.
         self._attached_objects = set()
 
-        #监听moveit中的planning sence变化
+        # /monitored_planning_scene is move_group's authoritative maintained
+        # scene and includes MTC's AttachedCollisionObject updates. Keep the
+        # /planning_scene subscription as well for externally published diffs.
         self.create_subscription(
             PlanningScene,
-            "/planning_scene", 
+            "/monitored_planning_scene",
             self._on_planning_scene,
             10
+        )
+        self.create_subscription(
+            PlanningScene,
+            "/planning_scene",
+            self._on_planning_scene,
+            10,
         )
 
     def _on_models(self, message: ModelStates) -> None:
@@ -119,9 +128,32 @@ class GazeboPlanningSceneSync(Node):
         except Exception as error:  # service may disappear during shutdown
             self.get_logger().debug(f"Planning-scene update failed: {error}")
 
+    def _remove_world_object(self, object_id: str) -> None:
+        """Remove a stale world copy after an MTC attachment update.
+
+        A Gazebo pose update can already be in flight when MTC attaches an
+        object.  Explicitly removing the world copy closes that race instead
+        of waiting for the next model-states callback to notice the attachment.
+        """
+        if not self._apply.wait_for_service(timeout_sec=0.0):
+            return
+        scene = PlanningScene(is_diff=True)
+        scene.world.collision_objects = [
+            CollisionObject(id=object_id, operation=CollisionObject.REMOVE)
+        ]
+        future = self._apply.call_async(ApplyPlanningScene.Request(scene=scene))
+        future.add_done_callback(self._remove_done)
+
+    def _remove_done(self, future) -> None:
+        try:
+            if not future.result().success:
+                self.get_logger().warning("MoveIt rejected stale world-object removal")
+        except Exception as error:  # service may disappear during shutdown
+            self.get_logger().debug(f"World-object removal failed: {error}")
+
     def _on_planning_scene(self, message: PlanningScene) -> None:
         if not message.is_diff:
-            self._attached_ids.clear()
+            self._attached_objects.clear()
 
         for attached in (
             message.robot_state.attached_collision_objects
@@ -130,9 +162,13 @@ class GazeboPlanningSceneSync(Node):
             if (
                 attached.object.operation == CollisionObject.REMOVE
             ):
-                self._attached_ids.discard(object_id)
+                self._attached_objects.discard(object_id)
             else:
-                self._attached_ids.add(object_id)    
+                self._attached_objects.add(object_id)
+                if object_id in {
+                    f"gazebo_{model_name}" for model_name in self._models
+                }:
+                    self._remove_world_object(object_id)
 
 
 def main() -> None:

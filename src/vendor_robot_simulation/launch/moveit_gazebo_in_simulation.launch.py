@@ -163,7 +163,7 @@ def _setup(context):
         # 控制器由 Gazebo 中的 gazebo_ros2_control 管理，MoveIt 不负责启停。
         "moveit_manage_controllers": False,
         #加载MTC执行能力
-        "capabilities": "move_group/ExecuteTrajectoryCapability",
+        "capabilities": "move_group/ExecuteTaskSolutionCapability",
         "trajectory_execution.execution_duration_monitoring": True,
         "trajectory_execution.allowed_execution_duration_scaling": 2.0,
         "trajectory_execution.allowed_goal_duration_margin": 2.0,

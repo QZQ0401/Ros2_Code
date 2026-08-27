@@ -8,6 +8,12 @@ Panels:
     Name: Help
   - Class: rviz_common/Views
     Name: Views
+  - Class: moveit_task_constructor/Motion Planning Tasks
+    Global Settings:
+      Task View Settings:
+        Show Computation Times: true
+        Task Expansion: All Expanded
+    Name: Motion Planning Tasks
 Visualization Manager:
   Displays:
     - Class: rviz_default_plugins/Grid
@@ -25,6 +31,23 @@ Visualization Manager:
         Scene Alpha: 1
       Scene Robot:
         Robot Alpha: 0.5
+      Value: true
+    - Class: moveit_task_constructor/Motion Planning Tasks
+      Enabled: true
+      Interrupt Display: false
+      Loop Animation: false
+      Markers:
+        All at once?: false
+        Value: true
+      Name: MTC Task Solutions
+      Robot Description: robot_description
+      Scene:
+        Scene Alpha: 0.9
+        Value: true
+      Show Trail: false
+      State Display Time: 0.05 s
+      Task Solution Topic: /solution
+      Trail Step Size: 1
       Value: true
   Global Options:
     Fixed Frame: base_link
