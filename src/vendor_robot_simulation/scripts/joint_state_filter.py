@@ -10,6 +10,7 @@ VALID_JOINTS = {
     "joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
     "gripper_left_joint", "gripper_right_joint",
     "left_wheel_joint", "right_wheel_joint",
+    "caster_swivel_joint", "caster_wheel_joint",
 }
 
 

@@ -38,7 +38,7 @@ def _setup(context):
         FindPackageShare("gazebo_ros").perform(context), "launch", "gazebo.launch.py")
     spawn_entity = Node(
         package="gazebo_ros", executable="spawn_entity.py",
-        arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", "0.0"],
+        arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", "0.05"],
         output="screen")
     joint_state_spawner = Node(
         package="controller_manager", executable="spawner",

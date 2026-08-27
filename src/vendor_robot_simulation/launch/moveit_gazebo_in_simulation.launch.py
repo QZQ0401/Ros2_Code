@@ -131,10 +131,12 @@ def _setup(context):
             "G4",
             package_name="vendor_robot_moveit_config",
         )
-        .robot_description(file_path="config/G4.urdf.xacro", mappings={"prefix": prefix})
+        .robot_description(file_path="config/G4.urdf.xacro", mappings={"prefix": prefix, "robot_name": "g4_mobile_depth"})
         .robot_description_semantic(
             file_path="config/G4.srdf.xacro",
-            mappings={"prefix": prefix},
+            # The combined Gazebo URDF is named g4_mobile_depth; SRDF must
+            # use the same robot name and explicitly receives this xacro arg.
+            mappings={"prefix": prefix, "robot_name": "g4_mobile_depth"},
         )
         .robot_description_kinematics(
             file_path="config/kinematics.yaml"
@@ -160,6 +162,8 @@ def _setup(context):
         "allow_trajectory_execution": allow_trajectory_execution,
         # 控制器由 Gazebo 中的 gazebo_ros2_control 管理，MoveIt 不负责启停。
         "moveit_manage_controllers": False,
+        #加载MTC执行能力
+        "capabilities": "move_group/ExecuteTrajectoryCapability",
         "trajectory_execution.execution_duration_monitoring": True,
         "trajectory_execution.allowed_execution_duration_scaling": 2.0,
         "trajectory_execution.allowed_goal_duration_margin": 2.0,
@@ -201,6 +205,13 @@ def _setup(context):
                 {"grasp_box_size": [0.05, 0.05, 0.05]},
             ],
         ),
+        # Node(
+        #     package="vendor_robot_simulation",
+        #     executable="mtc_task_demo",
+        #     name="mtc_task_demo",
+        #     output="screen",
+        #     parameters=common_parameters,
+        # )
     ]
 
     if start_move_l_server:

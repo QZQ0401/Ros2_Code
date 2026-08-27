@@ -56,6 +56,16 @@ class GazeboPlanningSceneSync(Node):
         self.create_subscription(
             ModelStates, "/gazebo/model_states", self._on_models, model_states_qos
         )
+        #保存当前已经附着到机器人上的物体ID，避免重复添加
+        self._attached_objects = set()
+
+        #监听moveit中的planning sence变化
+        self.create_subscription(
+            PlanningScene,
+            "/planning_scene", 
+            self._on_planning_scene,
+            10
+        )
 
     def _on_models(self, message: ModelStates) -> None:
         now = self.get_clock().now()
@@ -71,6 +81,9 @@ class GazeboPlanningSceneSync(Node):
                 self.get_logger().error(f"No 3D size configured for model '{model_name}'")
                 continue
             object_id = f"gazebo_{model_name}"
+            #如果目标被moveit附着到机器人上了，就不再添加到planning scene中
+            if object_id in self._attached_objects:
+                continue
             objects.append(self._make_box(object_id, message.pose[index[model_name]], size))
             if model_name not in self._seen:
                 self.get_logger().info(
@@ -105,6 +118,21 @@ class GazeboPlanningSceneSync(Node):
                 self.get_logger().warning("MoveIt rejected the planning-scene update")
         except Exception as error:  # service may disappear during shutdown
             self.get_logger().debug(f"Planning-scene update failed: {error}")
+
+    def _on_planning_scene(self, message: PlanningScene) -> None:
+        if not message.is_diff:
+            self._attached_ids.clear()
+
+        for attached in (
+            message.robot_state.attached_collision_objects
+        ):
+            object_id = attached.object.id
+            if (
+                attached.object.operation == CollisionObject.REMOVE
+            ):
+                self._attached_ids.discard(object_id)
+            else:
+                self._attached_ids.add(object_id)    
 
 
 def main() -> None:

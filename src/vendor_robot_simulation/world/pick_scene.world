@@ -42,7 +42,7 @@
       <static>true</static>
 
       <!-- 工作台位置 -->
-      <pose>1.4 0.7 0.4 0 0 0</pose>
+      <pose>1.0 0.7 0.4 0 0 0</pose>
 
       <link name="table_link">
 
@@ -76,7 +76,7 @@
     <model name="grasp_box">
 
       <!-- 放在桌面上方 -->
-      <pose>1.0 0.7 0.85 0 0 0</pose>
+      <pose>0.6 0.7 0.85 0 0 0</pose>
 
       <link name="box_link">
 

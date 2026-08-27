@@ -66,3 +66,5 @@ joint_state_broadcaster:
       - gripper_left_joint
       - left_wheel_joint
       - right_wheel_joint
+      - caster_swivel_joint
+      - caster_wheel_joint
