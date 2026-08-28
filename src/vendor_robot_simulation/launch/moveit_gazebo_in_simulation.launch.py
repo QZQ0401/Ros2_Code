@@ -80,6 +80,11 @@ def _value(context, name: str) -> str:
 def _setup(context):
     prefix = _value(context, "prefix")
     use_gravity = _value(context, "use_gravity")
+    fixed_mobile_base = _value(context, "fixed_mobile_base")
+    # 固定底盘不再由差速插件发布 odom，碰撞物体应直接使用 URDF 根坐标系。
+    planning_scene_frame = "world" if _as_bool(
+        fixed_mobile_base, "fixed_mobile_base"
+    ) else "odom"
     world = _value(context, "world")
     start_rviz = _as_bool(_value(context, "start_rviz"), "start_rviz")
     start_move_l_server = _as_bool(
@@ -116,6 +121,7 @@ def _setup(context):
         launch_arguments={
             "prefix": prefix,
             "use_gravity": use_gravity,
+            "fixed_mobile_base": fixed_mobile_base,
             "world": world,
         }.items(),
     )
@@ -125,6 +131,7 @@ def _setup(context):
     mobile_robot_description = ParameterValue(Command([
         FindExecutable(name="xacro"), " ", str(simulation_urdf),
         " prefix:=", prefix, " use_gravity:=", use_gravity,
+        " fixed_mobile_base:=", fixed_mobile_base,
     ]), value_type=str)
     moveit_config = (
         MoveItConfigsBuilder(
@@ -147,9 +154,9 @@ def _setup(context):
         .trajectory_execution(
             file_path="config/moveit_controllers.yaml"
         )
-        .sensors_3d(
-            file_path="config/sensors_3d.yaml"
-        )
+        # .sensors_3d(
+        #     file_path="config/sensors_3d.yaml"
+        # )
         .planning_pipelines(
             pipelines=["ompl"]
         )
@@ -198,10 +205,13 @@ def _setup(context):
             output="screen",
             parameters=[
                 {"use_sim_time": True},
-                {"world_frame": "odom"},
-                {"obstacle_models": ["work_table"]},
+                {"world_frame": planning_scene_frame},
+                # 与 pick_scene.world 中的静态模型保持一致；同步节点只会
+                # 将此列表内的 Gazebo 模型转换为 MoveIt 碰撞对象。
+                {"obstacle_models": ["work_table", "obstacle_box"]},
                 {"pick_models": ["grasp_box"]},
-                {"table_size": [1.2, 0.8, 0.8]},
+                {"table_size": [2.2, 0.8, 0.8]},
+                {"obstacle_box_size": [0.03, 0.55, 0.25]},
                 {"grasp_box_size": [0.05, 0.05, 0.05]},
             ],
         ),
@@ -295,6 +305,11 @@ def generate_launch_description():
                 "use_gravity",
                 default_value="false",
                 description="是否在 Gazebo 中启用各 Link 的重力",
+            ),
+            DeclareLaunchArgument(
+                "fixed_mobile_base",
+                default_value="true",
+                description="是否将移动底盘固定在 Gazebo 世界坐标系中",
             ),
             DeclareLaunchArgument(
                 "world",

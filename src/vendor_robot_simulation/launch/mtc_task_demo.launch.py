@@ -23,9 +23,6 @@ def _setup(context):
 
     prefix = LaunchConfiguration("prefix").perform(context)
     use_gravity = LaunchConfiguration("use_gravity").perform(context)
-    post_grasp_settle_time = LaunchConfiguration(
-        "post_grasp_settle_time"
-    )
 
     simulation_share = Path(
         get_package_share_directory(
@@ -140,12 +137,6 @@ def _setup(context):
         # 允许节点发布robot_description相关信息
         "publish_robot_description": True,
         "publish_robot_description_semantic": True,
-        # Keep the arm still after the gripper closes so Gazebo's contact
-        # solver can settle before the lift trajectory starts.
-        "post_grasp_settle_time": ParameterValue(
-            post_grasp_settle_time,
-            value_type=float,
-        ),
     }
 
     # ============================================================
@@ -198,12 +189,6 @@ def generate_launch_description():
                 "use_gravity",
                 default_value="false",
                 description="是否启用Gazebo机器人Link重力",
-            ),
-
-            DeclareLaunchArgument(
-                "post_grasp_settle_time",
-                default_value="1.0",
-                description="闭爪后、抬升前的Gazebo接触稳定等待时间（秒）",
             ),
 
             OpaqueFunction(

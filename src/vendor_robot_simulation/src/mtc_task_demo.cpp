@@ -12,10 +12,8 @@
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/stages.h>
 #include <moveit/task_constructor/solvers.h>
-#include <moveit/robot_trajectory/robot_trajectory.h>
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
-#include <moveit/planning_scene/planning_scene.h>
 
 #include <moveit_msgs/msg/move_it_error_codes.hpp>
 
@@ -34,7 +32,7 @@ static constexpr char HAND_GROUP[] =
     "gripper";
 
 static constexpr char HAND_FRAME[] =
-    "gripper_base_link";
+    "gripper_tcp";
 
 static constexpr char OBJECT_ID[] =
     "gazebo_grasp_box";
@@ -42,50 +40,11 @@ static constexpr char OBJECT_ID[] =
 static constexpr char WORK_TABLE_ID[] =
     "gazebo_work_table";
 
+// 移动底盘固定时，URDF 根节点为 world，且差速插件不会再发布 odom。
+// 抓取接近方向和物体位姿必须使用同一坐标系，避免出现 odom -> world
+// 变换缺失并被 MoveIt 回退为单位变换的错误。
 static constexpr char WORLD_FRAME[] =
-    "odom";
-
-
-// MTC Humble has no built-in Wait stage.  A two-waypoint trajectory with
-// identical arm states makes the controller actively hold position for the
-// requested duration during task execution.
-class TimedArmHold : public mtc::PropagatingEitherWay
-{
-public:
-    TimedArmHold(
-        const std::string & name,
-        double duration_seconds)
-        : mtc::PropagatingEitherWay(name),
-          duration_seconds_(duration_seconds)
-    {
-    }
-
-private:
-    bool compute(
-        const mtc::InterfaceState & state,
-        planning_scene::PlanningScenePtr & scene,
-        mtc::SubTrajectory & trajectory,
-        mtc::Interface::Direction) override
-    {
-        scene = state.scene()->diff();
-
-        auto hold_trajectory = std::make_shared<
-            robot_trajectory::RobotTrajectory>(
-                scene->getRobotModel(),
-                ARM_GROUP);
-
-        const auto & robot_state = scene->getCurrentState();
-        hold_trajectory->addSuffixWayPoint(robot_state, 0.0);
-        hold_trajectory->addSuffixWayPoint(
-            robot_state,
-            duration_seconds_);
-
-        trajectory.setTrajectory(hold_trajectory);
-        return true;
-    }
-
-    double duration_seconds_;
-};
+    "world";
 
 
 class MtcPickNode
@@ -99,17 +58,6 @@ public:
             std::make_shared<rclcpp::Node>(
                 "mtc_pick_demo",
                 options);
-
-        post_grasp_settle_time_ =
-            node_->declare_parameter<double>(
-                "post_grasp_settle_time",
-                1.0);
-
-        if (post_grasp_settle_time_ <= 0.0)
-        {
-            throw std::runtime_error(
-                "post_grasp_settle_time 必须大于 0 秒");
-        }
     }
 
 
@@ -362,13 +310,18 @@ private:
                 mtc::solvers::
                     JointInterpolationPlanner>();
 
+        interpolation_planner->
+            setMaxVelocityScalingFactor(
+                0.2);
+        interpolation_planner->
+            setMaxAccelerationScalingFactor(
+                0.2);
 
         // 接近和抬起使用笛卡尔直线
         auto cartesian_planner =
             std::make_shared<
                 mtc::solvers::
                     CartesianPath>();
-
 
         cartesian_planner->
             setMaxVelocityScalingFactor(
@@ -504,8 +457,8 @@ private:
                 Vector3Stamped direction;
 
 
-            // 当前场景是桌面顶部抓取，
-            // 因此直接使用odom的-Z方向向下接近
+            // 当前场景是桌面顶部抓取，固定底盘模式下直接使用 world 的
+            // -Z 方向向下接近，和规划场景碰撞物体的坐标系保持一致。
             direction.header.frame_id =
                 WORLD_FRAME;
 
@@ -575,9 +528,11 @@ private:
 
 
             // =================================================
-            // 抓取中心相对于gripper_base_link的变换
+            // 相对于 gripper_tcp 的抓取变换
             //
-            // 这里是当前工程唯一需要根据真实夹爪模型校准的部分。
+            // gripper_tcp 已在 gripper.xacro 中校准为手指夹持中心，故这里
+            // 必须保持零平移；若再次填入 gripper_base_link 的偏置，会使 TCP
+            // 偏移两次，造成真实夹爪停在物块上方或下方。
             // =================================================
 
             Eigen::Isometry3d
@@ -586,12 +541,10 @@ private:
                         Identity();
 
 
-            // 示例：
-            // 方块中心放在距基座 14 cm 处。考虑指端固定关节的 2.3 cm
-            // 偏置后，指端仍覆盖方块中上部，且不会掠过桌面。
+            // 物块中心与 gripper_tcp 重合，实际手指位置由 TCP 固定关节给出。
             grasp_frame_transform.
                 translation().z() =
-                    0.140;
+                    0.0;
 
 
             // 示例初始姿态：
@@ -664,13 +617,18 @@ private:
                         ModifyPlanningScene>(
                             "allow gripper-object collision");
 
-            // The SRDF gripper group contains the commanded left joint only.
-            // The right guide and finger are mimic links, so they are not
-            // returned by hand_group. Both fingers must be allowed to contact
-            // the object during the closing motion.
+            // SRDF 的 gripper 组只包含左侧的驱动关节。左右手指都是固定
+            // 子 Link 或 mimic Link，不能依赖 hand_group 一定收集完整；
+            // 因此下面显式列出两侧导轨和手指，使闭合时允许它们接触目标。
             auto gripper_collision_links =
                 hand_group->
                     getLinkModelNamesWithCollisionGeometry();
+
+            gripper_collision_links.emplace_back(
+                "gripper_left_link");
+
+            gripper_collision_links.emplace_back(
+                "gripper_left_finger");
 
             gripper_collision_links.emplace_back(
                 "gripper_right_link");
@@ -715,25 +673,14 @@ private:
                 HAND_GROUP);
 
 
-            // 对 5 cm 方块使用保留约 5.4 cm 指间距的 grasp 状态；
-            // closed 是空载时两指几乎相合的状态，不能用于该物体。
+            // 对 5 cm 方块使用 SRDF 的 grasp 状态。该状态允许手指与目标
+            // 轻微接触以模拟夹持；closed 是空载时两指几乎相合的状态，不能使用。
             stage->setGoal(
                 "grasp");
-
 
             pick->insert(
                 std::move(stage));
         }
-
-
-        // ====================================================
-        // 闭爪后保持：等待 Gazebo 接触约束稳定
-        // ====================================================
-
-        pick->insert(
-            std::make_unique<TimedArmHold>(
-                "settle gripper contact",
-                post_grasp_settle_time_));
 
 
         // ====================================================
@@ -820,9 +767,6 @@ private:
 
     rclcpp::Node::SharedPtr
         node_;
-
-    double
-        post_grasp_settle_time_;
 
     mtc::Task
         task_;

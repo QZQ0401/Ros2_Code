@@ -40,3 +40,19 @@ arm_controller:
 gripper_controller:
   ros__parameters:
     joint: gripper_left_joint
+  command_interfaces:
+    - position
+    - velocity
+  state_interfaces:
+    - position
+    - velocity 
+    # 最大允许夹紧力
+  max_effort: 10.0
+   # 允许夹爪因为物体阻挡而停止
+  allow_stalling: true
+  #判断夹爪基本停止的速度阈值
+  stalled_velocity_tolerance: 0.01
+   # 连续稳定多久后认为夹爪已经stall
+  stalled_timeout: 0.5
+   # 位置误差容许范围
+  position_tolerance: 0.01

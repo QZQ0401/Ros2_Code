@@ -22,6 +22,8 @@ moveit_simple_controller_manager:
   gripper_controller:
     type: GripperCommand
     action_ns: gripper_cmd
-    default: false
+    default: true
     joints:
       - gripper_left_joint
+    command_joint: gripper_left_joint
+    max_effort: 10.0

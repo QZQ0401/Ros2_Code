@@ -2,7 +2,9 @@
 <!-- Mobile G4: differential-drive base plus a Link6-mounted depth camera. -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="g4_mobile_depth">
   <xacro:arg name="prefix" default=""/>
-  <xacro:arg name="use_gravity" default="true"/>
+  <xacro:arg name="use_gravity" default="false"/>
+  <!-- true：底盘固定在世界坐标系；false：为恢复差速移动预留。 -->
+  <xacro:arg name="fixed_mobile_base" default="true"/>
   <xacro:arg name="initial_positions_file" default="$(find vendor_robot_description)/config/initial_positions.yaml"/>
   <xacro:arg name="controllers_file" default="$(find vendor_robot_simulation)/config/controllers.yaml"/>
 
@@ -60,9 +62,8 @@
       <!-- Mimic joints are state-only: gripper_left_joint is the sole actuator. -->
       <state_interface name="position"/><state_interface name="velocity"/>
     </joint>
-    <!-- The diff-drive Gazebo plugin commands these wheels.  ros2_control only
-         exports their state so robot_state_publisher and MoveIt see a complete
-         model state. -->
+    <!-- 当前移动底盘固定在世界坐标系中；轮子只导出状态，保证
+         robot_state_publisher 与 MoveIt 获得完整的机器人关节状态。 -->
     <joint name="${prefix}left_wheel_joint">
       <state_interface name="position"/>
       <state_interface name="velocity"/>
@@ -86,7 +87,7 @@
       <parameters>$(arg controllers_file)</parameters><hold_joints>true</hold_joints>
     </plugin>
   </gazebo>
-
+  <!-- 左右两差速轮设置和joint设置在mobile_base_link上. -->
   <xacro:macro name="wheel" params="name y">
     <link name="${prefix}${name}">
       <inertial>
@@ -101,13 +102,12 @@
       <parent link="${prefix}mobile_base_link"/>
       <child link="${prefix}${name}"/>
       <!-- mobile_base_link is elevated; keep wheel contact at world z=0. -->
-      <origin xyz="0 ${y} ${wheel_radius / 2.0}" rpy="0 0 0"/>
+      <origin xyz="0.15 ${y} ${wheel_radius / 2.0}" rpy="0 0 0"/>
       <axis xyz="0 1 0"/>
     </joint>
   </xacro:macro>
 
-  <!-- A massless root prevents KDL/robot_state_publisher from discarding the
-       mobile-base inertia. Gazebo's odom TF targets mobile_base_link. -->
+  <!-- 移动底盘的size设置. -->
   <link name="${prefix}base_footprint"/>
   <link name="${prefix}mobile_base_link">
     <inertial>
@@ -118,6 +118,19 @@
     <visual><origin xyz="0 0 0.10"/><geometry><box size="0.70 0.52 0.20"/></geometry><material name="base_blue"><color rgba="0.10 0.20 0.40 1"/></material></visual>
     <collision><origin xyz="0 0 0.10"/><geometry><box size="0.70 0.52 0.20"/></geometry></collision>
   </link>
+  <!--
+    将移动底盘固定到 Gazebo 世界坐标系。
+    这样开启重力后，底盘和三个轮子不会因轮地接触、惯量或残余速度而移动；
+    机械臂的各个可动关节仍由 ros2_control 正常驱动。
+  -->
+  <xacro:if value="$(arg fixed_mobile_base)">
+    <link name="world"/>
+    <joint name="${prefix}world_to_mobile_base" type="fixed">
+      <parent link="world"/>
+      <child link="${prefix}mobile_base_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
   <joint name="${prefix}mobile_base_to_base_footprint" type="fixed">
     <parent link="${prefix}mobile_base_link"/><child link="${prefix}base_footprint"/>
     <origin xyz="0 0 -0.05" rpy="0 0 0"/>
@@ -181,7 +194,7 @@
   <gazebo reference="${prefix}depth_camera_link">
     <gravity>$(arg use_gravity)</gravity>
     <sensor name="depth_camera_sensor" type="depth">
-      <always_on>true</always_on><update_rate>30</update_rate><visualize>false</visualize>
+      <always_on>true</always_on><update_rate>10</update_rate><visualize>false</visualize>
       <camera><horizontal_fov>1.047</horizontal_fov><image><width>640</width><height>480</height><format>B8G8R8</format></image><depth_camera/><clip><near>0.10</near><far>8.0</far></clip></camera>
       <plugin name="depth_camera_controller" filename="libgazebo_ros_camera.so">
         <ros><namespace>/</namespace></ros>
@@ -192,6 +205,11 @@
     </sensor>
   </gazebo>
 
+  <!--
+    差速驱动配置暂时保留但不加载。移动底盘固定时若加载该插件，插件仍会
+    向左右轮施加速度命令，可能引发轮地接触的不稳定。需要恢复小车移动时，
+    将启动参数 fixed_mobile_base 设为 false，并取消下面整段注释。
+
   <gazebo>
     <plugin name="mobile_base_diff_drive" filename="libgazebo_ros_diff_drive.so">
       <ros><namespace>/</namespace></ros>
@@ -200,10 +218,8 @@
       <wheel_separation>${wheel_separation}</wheel_separation><wheel_diameter>${2.0 * wheel_radius}</wheel_diameter>
       <max_wheel_torque>20.0</max_wheel_torque><max_wheel_acceleration>4.0</max_wheel_acceleration>
       <publish_odom>true</publish_odom><publish_odom_tf>true</publish_odom_tf><publish_wheel_tf>true</publish_wheel_tf>
-      <!-- Publish odom -> base_footprint.  The URDF then contributes the
-           fixed base_footprint -> mobile_base_link transform, yielding one
-           connected TF tree (rather than two parents for mobile_base_link). -->
       <odometry_frame>odom</odometry_frame><robot_base_frame>${prefix}mobile_base_link</robot_base_frame>
     </plugin>
   </gazebo>
+  -->
 </robot>

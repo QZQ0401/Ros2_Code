@@ -42,7 +42,7 @@
       <static>true</static>
 
       <!-- 工作台位置 -->
-      <pose>1.0 0.7 0.4 0 0 0</pose>
+      <pose>0.0 0.7 0.4 0 0 0</pose>
 
       <link name="table_link">
 
@@ -50,7 +50,7 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>1.2 0.8 0.8</size>
+              <size>2.2 0.8 0.8</size>
             </box>
           </geometry>
         </collision>
@@ -59,13 +59,67 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>1.2 0.8 0.8</size>
+              <size>2.2 0.8 0.8</size>
             </box>
           </geometry>
 
           <material>
             <ambient>0.5 0.3 0.1 1</ambient>
             <diffuse>0.5 0.3 0.1 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+    </model>
+
+    <!-- 障碍物1 -->
+    <model name="obstacle_box">
+      <static>true</static>
+      <!-- 放在桌面上方 -->
+      <pose>0.2 0.7 0.85 0 0 0</pose>
+
+      <link name="obstacle_link">
+
+        <!-- 惯性参数 -->
+        <inertial>
+          <mass>0.9</mass>
+          <inertia>
+            <ixx>0.000083</ixx>
+            <iyy>0.000083</iyy>
+            <izz>0.000083</izz>
+          </inertia>
+        </inertial>
+
+        <!-- 碰撞模型 -->
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.03 0.55 0.25</size>
+            </box>
+          </geometry>
+
+          <surface>
+            <friction>
+              <ode>
+                <!-- 增加摩擦力，方便夹爪抓取 -->
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+
+        <!-- 可视化模型 -->
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.03 0.55 0.25</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.8 0.1 0.1 1</ambient>
+            <diffuse>0.8 0.1 0.1 1</diffuse>
           </material>
         </visual>
 

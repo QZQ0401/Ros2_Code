@@ -14,6 +14,8 @@ import xacro
 def _setup(context):
     prefix = LaunchConfiguration("prefix").perform(context)
     use_gravity = LaunchConfiguration("use_gravity").perform(context)
+    fixed_mobile_base = LaunchConfiguration("fixed_mobile_base").perform(context)
+    spawn_z = LaunchConfiguration("spawn_z").perform(context)
     if prefix:
         raise RuntimeError("Gazebo controller YAML is unprefixed; use a separate Gazebo instance per robot")
     simulation_share = Path(
@@ -28,7 +30,11 @@ def _setup(context):
     # `--param robot_description:=<text>`. XML declarations/comments can make
     # its rcl argument parser reject the override, so pass only the URDF root.
     robot_description = xacro.process_file(
-        str(description), mappings={"prefix": prefix, "use_gravity": use_gravity}).toxml()
+        str(description), mappings={
+            "prefix": prefix,
+            "use_gravity": use_gravity,
+            "fixed_mobile_base": fixed_mobile_base,
+        }).toxml()
     robot_description = re.sub(r"<\?xml[^>]*\?>", "", robot_description)
     robot_description = re.sub(r"<!--.*?-->", "", robot_description, flags=re.DOTALL).strip()
     # controller_yaml = Path(
@@ -38,7 +44,10 @@ def _setup(context):
         FindPackageShare("gazebo_ros").perform(context), "launch", "gazebo.launch.py")
     spawn_entity = Node(
         package="gazebo_ros", executable="spawn_entity.py",
-        arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", "0.05"],
+        # At z=0.05 the 0.10 m radius drive wheels start in exact contact
+        # with the ground plane.  A small initial clearance avoids Gazebo
+        # resolving that contact by placing the wheel collision below ground.
+        arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", spawn_z],
         output="screen")
     joint_state_spawner = Node(
         package="controller_manager", executable="spawner",
@@ -91,6 +100,16 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("prefix", default_value=""),
         DeclareLaunchArgument("use_gravity",  default_value="false", description="是否在 Gazebo 中启用机器人各 Link 的重力"),
+        DeclareLaunchArgument(
+            "fixed_mobile_base",
+            default_value="true",
+            description="是否将移动底盘固定在 Gazebo 世界坐标系中",
+        ),
+        DeclareLaunchArgument(
+            "spawn_z",
+            default_value="0.055",
+            description="机器人生成高度（m）；默认给轮子保留 5 mm 的初始离地间隙",
+        ),
         DeclareLaunchArgument(
             "world",
             default_value=str(default_world),

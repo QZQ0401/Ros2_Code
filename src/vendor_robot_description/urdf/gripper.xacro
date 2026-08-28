@@ -127,5 +127,29 @@
         </geometry>
       </collision>
     </link>
+    <!--
+      夹爪实际夹持中心。手指碰撞网格在 gripper_base_link 的本地 Z 方向
+      覆盖 0.0805–0.1535 m，中心约为 0.117 m。MTC 以此 Link 作为 IK
+      坐标系，使物块中心落在两指的有效夹持区，而非停在手指上方。
+    -->
+    <link name="${prefix}gripper_tcp"/>
+
+    <joint
+        name="${prefix}gripper_tcp_joint"
+        type="fixed">
+
+        <parent
+            link="${prefix}gripper_base_link"/>
+
+        <child
+            link="${prefix}gripper_tcp"/>
+
+        <!-- 该偏置已由手指网格尺寸校准；修改后需同步检查 MTC 抓取效果。 -->
+        <origin
+            xyz="0 0 0.13"
+            rpy="0 0 0"/>
+
+    </joint>
+
   </xacro:macro>
 </robot>
