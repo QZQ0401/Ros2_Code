@@ -1058,7 +1058,7 @@ private:
     //
     // depth_camera_optical_frame
     //            ↓
-    //           odom
+    //           world
     //
     // 这里必须使用点云自身的timestamp。
     // ========================================================

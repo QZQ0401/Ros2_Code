@@ -35,7 +35,7 @@ static constexpr char HAND_FRAME[] =
     "gripper_tcp";
 
 static constexpr char OBJECT_ID[] =
-    "gazebo_grasp_box";
+    "vision_target";
 
 static constexpr char WORK_TABLE_ID[] =
     "gazebo_work_table";
