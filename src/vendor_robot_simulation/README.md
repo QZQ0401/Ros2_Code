@@ -2,7 +2,7 @@
 
 ## 1. 功能包作用
 
-本包使用 Gazebo Classic 和 `gazebo_ros2_control/GazeboSystem` 启动 G4 仿真，装载与真机同名的 `arm_controller` 和 `joint_state_broadcaster`。
+本包使用 Gazebo Classic 和 `gazebo_ros2_control/GazeboSystem` 启动多机型仿真，通过 `robot_type` 选择模型，控制器接口保持统一。
 
 仿真验证 ROS 图、轨迹控制和模型，无法验证 RTDE、SDK、网络重连、控制柜安全状态或 `servoj` 实时行为。
 
@@ -10,12 +10,14 @@
 
 ```text
 vendor_robot_simulation/
-├── config/controllers.yaml
-├── doc/controllers.yaml
+├── config/
+│   ├── g4/controllers.yaml
+│   ├── g6/controllers.yaml
+│   └── <model>/controllers.yaml
 ├── launch/
-|      ├──moveit_gazebo_in_simulation.launch.py
-│      └──simulation.launch.py
-├── urdf/g4.gazebo.urdf.xacro
+│   ├── moveit_gazebo_in_simulation.launch.py
+│   └── simulation.launch.py
+├── urdf/gazebo.urdf.xacro       # 按 robot_type 选择模型的 Gazebo 通用入口
 ├── CMakeLists.txt
 ├── package.xml
 └── README.md
@@ -27,7 +29,7 @@ vendor_robot_simulation/
 
 ```bash
 # 启动gazebo仿真
-ros2 launch vendor_robot_simulation simulation.launch.py
+ros2 launch vendor_robot_simulation simulation.launch.py robot_type:=g9 
 ```
 启动成功之后弹出界面：
 ![alt text](doc/gazebo1.png)
@@ -43,7 +45,7 @@ ros2 action send_goal --feedback \
 
 ```bash
 # 启动moveit2+gazebo仿真
-ros2 launch vendor_robot_simulation moveit_gazebo_in_simulation.launch.py
+ros2 launch vendor_robot_simulation moveit_gazebo_in_simulation.launch.py robot_type:=g9
 ```
 启动成功之后弹出界面：
 ![alt text](doc/gazebo2.png)
@@ -68,7 +70,4 @@ ros2 launch vendor_robot_simulation simulation.launch.py prefix:=
 ```
 
 传入非空 prefix 会直接报错，因为 controller YAML 使用未加前缀的 joint 名。
-
-
-
 

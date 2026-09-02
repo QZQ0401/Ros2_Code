@@ -1,0 +1,4 @@
+# G18-specific mechanical limits.  MoveIt limits are maintained in the
+# corresponding vendor_robot_moveit_config/config/g18/joint_limits.yaml.
+robot_model: G18
+joint_count: 6

@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>vendor_robot_description</name>
-  <version>0.1.12</version>
+  <version>0.1.13</version>
   <description>
-    Prefix-aware G4 URDF and unified real/fake/simulation ros2_control xacro.
+    Prefix-aware Robot URDF and unified real/fake/simulation ros2_control xacro.
   </description>
 
   <maintainer email="ros2-maintainers@vendor.invalid">

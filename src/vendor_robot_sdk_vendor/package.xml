@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>vendor_robot_sdk_vendor</name>
-  <version>0.1.12</version>
+  <version>0.1.13</version>
   <description>Unmodified vendor SDK headers and x86_64 shared libraries.</description>
   <maintainer email="ros2-maintainers@vendor.invalid">Robot Driver Team</maintainer>
   <license>LicenseRef-Vendor-Proprietary</license>

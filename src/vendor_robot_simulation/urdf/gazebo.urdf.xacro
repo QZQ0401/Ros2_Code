@@ -1,0 +1,146 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro"
+       name="robot_gazebo">
+
+  <xacro:arg name="prefix" default=""/>
+  <xacro:arg name="robot_type" default="g4"/>
+
+  <xacro:arg
+    name="initial_positions_file"
+    default="$(find vendor_robot_description)/config/g4/initial_positions.yaml"/>
+
+  <xacro:arg
+    name="controllers_file"
+    default="$(find vendor_robot_simulation)/config/controllers.yaml"/>
+
+  <!-- 是否启用重力。
+       当前惯量和碰撞体尚未完全验证，建议先关闭重力完成控制验证。 -->
+  <xacro:arg name="use_gravity" default="false"/>
+
+  <xacro:property name="prefix" value="$(arg prefix)"/>
+
+  <xacro:property
+    name="initial_positions_file"
+    value="$(arg initial_positions_file)"/>
+
+  <xacro:property
+    name="initial_positions"
+    value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
+
+  <!-- 加载通用机械臂几何、运动学和惯量模型 -->
+  <xacro:if value="$(eval robot_type == 'g3')"><xacro:include filename="$(find vendor_robot_description)/urdf/g3/g3.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g4')"><xacro:include filename="$(find vendor_robot_description)/urdf/g4/g4.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g6')"><xacro:include filename="$(find vendor_robot_description)/urdf/g6/g6.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g6a')"><xacro:include filename="$(find vendor_robot_description)/urdf/g6a/g6a.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g6l')"><xacro:include filename="$(find vendor_robot_description)/urdf/g6l/g6l.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g9')"><xacro:include filename="$(find vendor_robot_description)/urdf/g9/g9.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g12')"><xacro:include filename="$(find vendor_robot_description)/urdf/g12/g12.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g18')"><xacro:include filename="$(find vendor_robot_description)/urdf/g18/g18.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g20')"><xacro:include filename="$(find vendor_robot_description)/urdf/g20/g20.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g25')"><xacro:include filename="$(find vendor_robot_description)/urdf/g25/g25.model.xacro"/></xacro:if>
+  <xacro:if value="$(eval robot_type == 'g30')"><xacro:include filename="$(find vendor_robot_description)/urdf/g30/g30.model.xacro"/></xacro:if>
+
+  <!--
+    g4.model.xacro 中已经存在：
+      base -> base_link
+
+    因此这里必须把 world 固定到 base，
+    不能再把 world 连接到 base_link，否则 base_link 会有两个父关节。
+  -->
+  <link name="world"/>
+
+  <xacro:if value="$(eval robot_type == 'g4')">
+    <joint name="${prefix}world_to_base" type="fixed">
+      <parent link="world"/><child link="${prefix}base"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
+  <xacro:if value="$(eval robot_type != 'g4')">
+    <joint name="${prefix}world_to_base_link" type="fixed">
+      <parent link="world"/><child link="${prefix}base_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
+
+  <!-- 为每一个 Link 添加 Gazebo 专用属性 -->
+  <xacro:macro name="gazebo_link_properties" params="link_name">
+    <gazebo reference="${prefix}${link_name}">
+      <material>Gazebo/White</material>
+
+      <!-- 复杂网格之间的自碰撞容易导致启动瞬间弹飞 -->
+      <self_collide>false</self_collide>
+
+      <!-- 初期关闭重力，验证模型和控制稳定后再打开 -->
+      <gravity>$(arg use_gravity)</gravity>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:gazebo_link_properties link_name="base_link"/>
+  <xacro:gazebo_link_properties link_name="Link1"/>
+  <xacro:gazebo_link_properties link_name="Link2"/>
+  <xacro:gazebo_link_properties link_name="Link3"/>
+  <xacro:gazebo_link_properties link_name="Link4"/>
+  <xacro:gazebo_link_properties link_name="Link5"/>
+  <xacro:gazebo_link_properties link_name="Link6"/>
+  <xacro:if value="$(eval robot_type not in ['g4', 'g6', 'g6a', 'g6l'])">
+    <xacro:gazebo_link_properties link_name="link1"/>
+    <xacro:gazebo_link_properties link_name="link2"/>
+    <xacro:gazebo_link_properties link_name="link3"/>
+    <xacro:gazebo_link_properties link_name="link4"/>
+    <xacro:gazebo_link_properties link_name="link5"/>
+    <xacro:gazebo_link_properties link_name="link6"/>
+  </xacro:if>
+
+  <!--
+    当前碰撞模型使用高精度 STL。
+    未完成简化碰撞体之前，先全局关闭自碰撞。
+  -->
+  <gazebo>
+    <self_collide>false</self_collide>
+  </gazebo>
+
+  <!-- Gazebo Classic 专用 ros2_control -->
+  <ros2_control name="${prefix}GazeboSystem" type="system">
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+    </hardware>
+
+    <xacro:macro name="gazebo_controlled_joint" params="joint_name">
+      <joint name="${prefix}${joint_name}">
+        <command_interface name="position"/>
+
+        <state_interface name="position">
+          <param name="initial_value">
+            ${initial_positions[joint_name]}
+          </param>
+        </state_interface>
+
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:macro>
+
+    <xacro:gazebo_controlled_joint joint_name="joint1"/>
+    <xacro:gazebo_controlled_joint joint_name="joint2"/>
+    <xacro:gazebo_controlled_joint joint_name="joint3"/>
+    <xacro:gazebo_controlled_joint joint_name="joint4"/>
+    <xacro:gazebo_controlled_joint joint_name="joint5"/>
+    <xacro:gazebo_controlled_joint joint_name="joint6"/>
+  </ros2_control>
+
+  <!-- 加载 Gazebo Classic ros2_control 插件 -->
+  <gazebo>
+    <plugin
+      filename="libgazebo_ros2_control.so"
+      name="gazebo_ros2_control">
+
+      <robot_param>robot_description</robot_param>
+      <robot_param_node>robot_state_publisher</robot_param_node>
+
+      <parameters>$(arg controllers_file)</parameters>
+
+      <!-- 控制器接管关节之前保持初始位置 -->
+      <hold_joints>true</hold_joints>
+    </plugin>
+  </gazebo>
+
+</robot>

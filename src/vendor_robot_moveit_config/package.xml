@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>vendor_robot_moveit_config</name>
-  <version>0.1.12</version>
-  <description>MoveIt 2 configuration and cancelable MoveL action for G4.</description>
+  <version>0.1.13</version>
+  <description>MoveIt 2 configuration and cancelable MoveL action for the robot.</description>
   <maintainer email="ros2-maintainers@vendor.invalid">Robot Driver Team</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

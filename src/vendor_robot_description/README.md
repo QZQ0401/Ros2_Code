@@ -2,10 +2,10 @@
 
 ## 1. 功能包作用
 
-本包提供 G4 的 URDF/Xacro、网格、初始关节位置和统一 ros2_control 描述。Real、Fake 和 Gazebo 使用同一模型入口：
+本包提供 CGXI Robot 的 URDF/Xacro、网格、初始关节位置和统一 ros2_control 描述。Real、Fake 和 Gazebo 使用同一模型入口：
 
 ```text
-urdf/g4.urdf.xacro
+urdf/<model>/<model>.urdf.xacro
 ```
 
 运行时接口由使用该模型的 `robot_state_publisher`、controller manager、MoveIt 或 Gazebo 创建。
@@ -14,13 +14,15 @@ urdf/g4.urdf.xacro
 
 ```text
 vendor_robot_description/
-├── urdf/
-│   ├── g4.urdf.xacro
-│   ├── g4.model.xacro
-│   └── g4.ros2_control.xacro
+├── config/
+│   ├── g4/initial_positions.yaml
+│   ├── g6/initial_positions.yaml
+│   └── <model>/model_limits.yaml
 ├── meshes/
-│   └── *.STL
-├── config/initial_positions.yaml
+│   └── <model>/*.STL
+├── urdf/
+│   ├── common/ros2_control.xacro
+│   └── <model>/<model>.urdf.xacro, <model>.model.xacro
 ├── CMakeLists.txt
 └── package.xml
 ```
@@ -29,10 +31,10 @@ vendor_robot_description/
 
 | 文件 | 作用 |
 |---|---|
-| `g4.model.xacro` | link、joint、惯量、visual、collision |
-| `g4.ros2_control.xacro` | Real/Fake/Simulation 硬件插件和 command/state interface |
-| `g4.urdf.xacro` | 统一参数入口；仿真时加载 gazebo_ros2_control |
-| `initial_positions.yaml` | Fake/初始 position state |
+| `<model>.model.xacro` | 该机型 link、joint、惯量、visual、collision |
+| `common/ros2_control.xacro` | 所有机型共用的硬件插件和 command/state interface |
+| `<model>.urdf.xacro` | 该机型参数入口；仿真时加载 gazebo_ros2_control |
+| `<model>/initial_positions.yaml` | 该机型 Fake/初始 position state |
 
 ## 3. Xacro 参数
 
@@ -111,4 +113,3 @@ URDF/Xacro
   ├─ MoveIt → RobotModel / collision model
   └─ Gazebo → model + gazebo_ros2_control
 ```
-

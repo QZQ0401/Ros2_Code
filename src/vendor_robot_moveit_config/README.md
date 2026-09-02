@@ -17,16 +17,10 @@ move_group → arm_controller/FollowJointTrajectory
 vendor_robot_moveit_config/
 ├── CMakeLists.txt
 ├── config/
-│   ├── G4.srdf
-│   ├── G4.srdf.xacro
-│   ├── G4.urdf.xacro
-│   ├── joint_limits.yaml
-│   ├── kinematics.yaml
-│   ├── moveit_controllers.yaml
-│   ├── moveit.rviz
-│   ├── ompl_planning.yaml
-│   ├── pilz_cartesian_limits.yaml
-│   └── ros2_controllers.yaml
+│   ├── g4/             # G4 的 URDF/SRDF 和全部 MoveIt 配置
+│   ├── g6/             # G6 配置
+│   ├── g6a/ g6l/       # G6 派生机型配置
+│   └── <model>/        # 其它机型配置
 ├── doc/
 │   ├── image1.png
 │   ├── image2.png
@@ -61,9 +55,9 @@ ros2 launch vendor_robot_moveit_config demo.launch.py
 ![alt text](doc/image2.png)
 ```bash
 
-# 真机统一入口，robot_ip和network_interface根据实际信息输入
+# 真机统一入口，通过 robot_type 选择机型
 ros2 launch vendor_robot_moveit_config real_moveit.launch.py \
-  robot_ip:=192.168.6.16 network_interface:=”ens33“ \
+  robot_type:=g6 robot_ip:=192.168.6.16 network_interface:=ens33 \
   rtde_frequency:=250 sdk_port:=2323 \
 
 
@@ -165,9 +159,4 @@ ros2 topic list -t | grep -E 'planning_scene|display_planned_path'
 ```
 
 MoveL server 内部通过 `MoveGroupInterface` 使用 MoveIt 标准 action/service/topic。
-
-## 6. 关节限制
-
-`joint_limits.yaml` 默认速度和加速度 scaling 都是 0.1。joint1～3 的加速度上限为 10 rad/s²，joint4～6 为 20 rad/s²；源码注释明确这些值是估算值，必须用机型手册和实机标定确认。
-
 

@@ -70,6 +70,25 @@ def _value(context, name):
 
 
 def _setup(context):
+    robot_type = _value(context, "robot_type").strip().lower()
+    model_configs = {
+        "g3": ("G3", "config/g3/G3.urdf.xacro", "config/g3/G3.srdf.xacro"),
+        "g4": ("G4", "config/g4/G4.urdf.xacro", "config/g4/G4.srdf.xacro"),
+        "g6": ("G6", "config/g6/G6.urdf.xacro", "config/g6/G6.srdf.xacro"),
+        "g6a": ("G6a", "config/g6a/G6a.urdf.xacro", "config/g6a/G6a.srdf.xacro"),
+        "g6l": ("G6l", "config/g6l/G6l.urdf.xacro", "config/g6l/G6l.srdf.xacro"),
+        "g9": ("G9", "config/g9/G9.urdf.xacro", "config/g9/G9.srdf.xacro"),
+        "g12": ("G12", "config/g12/G12.urdf.xacro", "config/g12/G12.srdf.xacro"),
+        "g18": ("G18", "config/g18/G18.urdf.xacro", "config/g18/G18.srdf.xacro"),
+        "g20": ("G20", "config/g20/G20.urdf.xacro", "config/g20/G20.srdf.xacro"),
+        "g25": ("G25", "config/g25/G25.urdf.xacro", "config/g25/G25.srdf.xacro"),
+        "g30": ("G30", "config/g30/G30.urdf.xacro", "config/g30/G30.srdf.xacro"),
+    }
+    if robot_type not in model_configs:
+        raise RuntimeError(
+            f"unsupported robot_type '{robot_type}'; available models: "
+            f"{', '.join(sorted(model_configs))}")
+    robot_name, urdf_file, srdf_file = model_configs[robot_type]
     robot_ip = _value(context, "robot_ip")
     network_interface = _value(context, "network_interface")
     rtde_frequency = _value(context, "rtde_frequency")
@@ -110,16 +129,16 @@ def _setup(context):
     }
     moveit_config = (
         MoveItConfigsBuilder(
-            "G4", package_name="vendor_robot_moveit_config")
+            robot_name, package_name="vendor_robot_moveit_config")
         .robot_description(
-            file_path="config/G4.urdf.xacro",
+            file_path=urdf_file,
             mappings=description_mappings)
         .robot_description_semantic(
-            file_path="config/G4.srdf.xacro",
+            file_path=srdf_file,
             mappings={"prefix": prefix})
-        .robot_description_kinematics(file_path="config/kinematics.yaml")
-        .joint_limits(file_path="config/joint_limits.yaml")
-        .trajectory_execution(file_path="config/moveit_controllers.yaml")
+        .robot_description_kinematics(file_path=f"config/{robot_type}/kinematics.yaml")
+        .joint_limits(file_path=f"config/{robot_type}/joint_limits.yaml")
+        .trajectory_execution(file_path=f"config/{robot_type}/moveit_controllers.yaml")
         .planning_pipelines(pipelines=["ompl"])
         .to_moveit_configs()
     )
@@ -167,6 +186,7 @@ def _setup(context):
             str(bringup_share / "launch" / "robot.launch.py")),
         launch_arguments={
             "mode": "real",
+            "robot_type": robot_type,
             "robot_ip": robot_ip,
             "network_interface": network_interface,
             "rtde_frequency": rtde_frequency,
@@ -223,7 +243,7 @@ def _setup(context):
     if start_rviz:
         rviz_config = Path(
             get_package_share_directory("vendor_robot_moveit_config"),
-            "config", "moveit.rviz")
+            "config", robot_type, "moveit.rviz")
         gated_nodes.append(Node(
             package="rviz2",
             executable="rviz2",
@@ -235,7 +255,7 @@ def _setup(context):
 
     actions = [
         LogInfo(msg=(
-            "Starting real G4 + MoveIt: "
+            f"Starting real {robot_name} + MoveIt: "
             f"robot_ip={robot_ip}, namespace=/{namespace}, prefix={prefix!r}, "
             f"arm_active={start_arm_controller}, "
             f"execution={allow_trajectory_execution}, "
@@ -265,6 +285,9 @@ def _setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument(
+            "robot_type", default_value="g4",
+            description="Robot model to load "),
         DeclareLaunchArgument("robot_ip", default_value="192.168.6.6"),
         DeclareLaunchArgument("network_interface", default_value=""),
         DeclareLaunchArgument("rtde_frequency", default_value="250"),

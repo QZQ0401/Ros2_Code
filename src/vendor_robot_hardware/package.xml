@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>vendor_robot_hardware</name>
-  <version>0.1.12</version>
-  <description>ros2_control hardware plugin for the G4 RTDE controller.</description>
+  <version>0.1.13</version>
+  <description>ros2_control hardware plugin for the Robot RTDE controller.</description>
   <maintainer email="ros2-maintainers@vendor.invalid">Robot Driver Team</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

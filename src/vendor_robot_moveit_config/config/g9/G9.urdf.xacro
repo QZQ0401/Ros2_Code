@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="G9">
+  <xacro:include filename="$(find vendor_robot_description)/urdf/g9/g9.urdf.xacro"/>
+</robot>

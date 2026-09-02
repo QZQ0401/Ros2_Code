@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="g6">
+  <xacro:arg name="prefix" default=""/>
+  <xacro:arg name="use_fake_hardware" default="false"/>
+  <xacro:arg name="use_simulation" default="false"/>
+  <xacro:arg name="robot_ip" default="192.168.6.6"/>
+  <xacro:arg name="network_interface" default=""/>
+  <xacro:arg name="rtde_frequency" default="250"/>
+  <xacro:arg name="rtde_protocol_version" default="3"/>
+  <xacro:arg name="initial_state_timeout_ms" default="10000"/>
+  <xacro:arg name="initial_positions_file"
+    default="$(find vendor_robot_description)/config/g6a/initial_positions.yaml"/>
+  <xacro:property name="prefix" value="$(arg prefix)"/>
+  <xacro:include filename="$(find vendor_robot_description)/urdf/g6a/g6a.model.xacro"/>
+  <xacro:include filename="$(find vendor_robot_description)/urdf/common/ros2_control.xacro"/>
+  <xacro:ros2_control name="${prefix}G6aSystem" prefix="${prefix}"
+    use_fake_hardware="$(arg use_fake_hardware)"
+    use_simulation="$(arg use_simulation)"
+    robot_ip="$(arg robot_ip)"
+    network_interface="$(arg network_interface)"
+    rtde_frequency="$(arg rtde_frequency)"
+    rtde_protocol_version="$(arg rtde_protocol_version)"
+    initial_state_timeout_ms="$(arg initial_state_timeout_ms)"
+    initial_positions_file="$(arg initial_positions_file)"/>
+  <xacro:if value="$(arg use_simulation)">
+    <gazebo>
+      <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+        <parameters>$(find vendor_robot_simulation)/config/controllers.yaml</parameters>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+</robot>

@@ -65,6 +65,23 @@ def _value(context, name: str) -> str:
 
 
 def _setup(context):
+    robot_type = _value(context, "robot_type").strip().lower()
+    model_configs = {
+        "g3": ("G3", "config/g3/G3.urdf.xacro", "config/g3/G3.srdf.xacro"),
+        "g4": ("G4", f"config/g4/G4.urdf.xacro", f"config/g4/G4.srdf.xacro"),
+        "g6": ("G6", f"config/g6/G6.urdf.xacro", f"config/g6/G6.srdf.xacro"),
+        "g6a": ("G6a", "config/g6a/G6a.urdf.xacro", "config/g6a/G6a.srdf.xacro"),
+        "g6l": ("G6l", "config/g6l/G6l.urdf.xacro", "config/g6l/G6l.srdf.xacro"),
+        "g9": ("G9", "config/g9/G9.urdf.xacro", "config/g9/G9.srdf.xacro"),
+        "g12": ("G12", "config/g12/G12.urdf.xacro", "config/g12/G12.srdf.xacro"),
+        "g18": ("G18", "config/g18/G18.urdf.xacro", "config/g18/G18.srdf.xacro"),
+        "g20": ("G20", "config/g20/G20.urdf.xacro", "config/g20/G20.srdf.xacro"),
+        "g25": ("G25", "config/g25/G25.urdf.xacro", "config/g25/G25.srdf.xacro"),
+        "g30": ("G30", "config/g30/G30.urdf.xacro", "config/g30/G30.srdf.xacro"),
+    }
+    if robot_type not in model_configs:
+        raise RuntimeError("robot_type must be one of g3, g4, g6, g6a, g6l, g9, g12, g18, g20, g25, g30")
+    robot_name, urdf_file, srdf_file = model_configs[robot_type]
     prefix = _value(context, "prefix")
     use_gravity = _value(context, "use_gravity")
     start_rviz = _as_bool(_value(context, "start_rviz"), "start_rviz")
@@ -101,6 +118,7 @@ def _setup(context):
         ),
         launch_arguments={
             "prefix": prefix,
+            "robot_type": robot_type,
             "use_gravity": use_gravity,
         }.items(),
     )
@@ -109,11 +127,11 @@ def _setup(context):
     # Gazebo 节点仍由 simulation.launch.py 使用 Gazebo 专用 URDF。
     moveit_config = (
         MoveItConfigsBuilder(
-            "G4",
+            robot_name,
             package_name="vendor_robot_moveit_config",
         )
         .robot_description(
-            file_path="config/G4.urdf.xacro",
+            file_path=urdf_file,
             mappings={
                 "prefix": prefix,
                 "use_fake_hardware": "true",
@@ -121,17 +139,17 @@ def _setup(context):
             },
         )
         .robot_description_semantic(
-            file_path="config/G4.srdf.xacro",
+            file_path=srdf_file,
             mappings={"prefix": prefix},
         )
         .robot_description_kinematics(
-            file_path="config/kinematics.yaml"
+            file_path=f"config/{robot_type}/kinematics.yaml"
         )
         .joint_limits(
-            file_path="config/joint_limits.yaml"
+            file_path=f"config/{robot_type}/joint_limits.yaml"
         )
         .trajectory_execution(
-            file_path="config/moveit_controllers.yaml"
+            file_path=f"config/{robot_type}/moveit_controllers.yaml"
         )
         .planning_pipelines(
             pipelines=["ompl"]
@@ -199,7 +217,7 @@ def _setup(context):
                 output="log",
                 arguments=[
                     "-d",
-                    str(moveit_share / "config" / "moveit.rviz"),
+                    str(moveit_share / "config" / robot_type / "moveit.rviz"),
                 ],
                 parameters=common_parameters,
             )
@@ -220,7 +238,7 @@ def _setup(context):
     return [
         LogInfo(
             msg=(
-                "启动 G4 Gazebo + MoveIt 联合仿真："
+                f"启动 {robot_name} Gazebo + MoveIt 联合仿真："
                 f"use_gravity={use_gravity}, "
                 f"trajectory_execution={allow_trajectory_execution}, "
                 f"rviz={start_rviz}"
@@ -240,6 +258,11 @@ def _setup(context):
 def generate_launch_description():
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                "robot_type",
+                default_value="g4",
+                description="机器人型号：g4 或 g6",
+            ),
             DeclareLaunchArgument(
                 "prefix",
                 default_value="",

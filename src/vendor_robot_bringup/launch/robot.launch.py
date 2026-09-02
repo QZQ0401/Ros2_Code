@@ -87,6 +87,24 @@ def _write_controller_parameters(
 
 
 def _setup(context):
+    robot_type = LaunchConfiguration("robot_type").perform(context).strip().lower()
+    model_files = {
+        "g3": "g3.urdf.xacro",
+        "g4": "g4.urdf.xacro",
+        "g6": "g6.urdf.xacro",
+        "g9": "g9.urdf.xacro", 
+        "g12": "g12.urdf.xacro",
+        "g18": "g18.urdf.xacro",
+        "g20": "g20.urdf.xacro",
+        "g25": "g25.urdf.xacro", 
+        "g30": "g30.urdf.xacro",
+        "g6a": "g6a.urdf.xacro",
+        "g6l": "g6l.urdf.xacro",
+    }
+    if robot_type not in model_files:
+        raise RuntimeError(
+            f"unsupported robot_type '{robot_type}'; available models: "
+            f"{', '.join(sorted(model_files))}")
     mode = LaunchConfiguration("mode").perform(context)
     if mode not in ("real", "fake"):
         raise RuntimeError(
@@ -109,8 +127,11 @@ def _setup(context):
     sdk_port = LaunchConfiguration("sdk_port").perform(context)
     description_share = FindPackageShare("vendor_robot_description")
     initial_positions = Path(
-        description_share.perform(context), "config", "initial_positions.yaml")
-    xacro_file = Path(description_share.perform(context), "urdf", "g4.urdf.xacro")
+        description_share.perform(context), "config", robot_type,
+        "initial_positions.yaml")
+    xacro_file = Path(
+        description_share.perform(context), "urdf", robot_type,
+        model_files[robot_type])
     robot_description = ParameterValue(Command([
         FindExecutable(name="xacro"), " ", str(xacro_file),
         " use_fake_hardware:=", "true" if mode == "fake" else "false",
@@ -162,8 +183,8 @@ def _setup(context):
     manager = f"{node_prefix}/controller_manager"
     nodes = [
         LogInfo(msg=(
-            "vendor_robot_bringup 0.1.12: "
-            f"mode={mode}, robot_ip={robot_ip}, "
+            "vendor_robot_bringup 0.1.13: "
+            f"robot_type={robot_type}, mode={mode}, robot_ip={robot_ip}, "
             f"network_interface={network_interface or '<default>'}, "
             f"rtde_frequency={update_rate}, "
             f"rtde_protocol_version={protocol_version}, "
@@ -268,6 +289,9 @@ def _setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument(
+            "robot_type", default_value="g4",
+            description="Robot model to load "),
         DeclareLaunchArgument("mode", default_value="real",
                               description="real or fake"),
         DeclareLaunchArgument("robot_ip", default_value="192.168.6.6"),

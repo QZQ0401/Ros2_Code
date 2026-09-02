@@ -1,0 +1,47 @@
+# joint_limits.yaml
+# 覆盖/补充 URDF 中的关节动力学属性。
+#
+# 【本次修复】原文件所有关节 has_acceleration_limits 都是 false、
+# max_acceleration 为 0，导致 MoveIt 的 AddTimeOptimalParameterization(TOTG)
+# 拿不到加速度约束，只能退回内置默认值做时间参数化。这样生成的轨迹在起停段
+# 加速度台阶很大，实机透传执行时跟随误差、命令跳变都会被放大。
+#
+# ⚠ 下面的加速度值是按关节等级估算的，不是从机型手册来的，需按实际标定核对。
+#   偏大会让轨迹起停更冲，偏小只是变慢，所以先偏小试。
+
+default_velocity_scaling_factor: 0.1
+default_acceleration_scaling_factor: 0.1
+
+joint_limits:
+ 
+  joint1:
+    has_velocity_limits: true
+    max_velocity: 2.63
+    has_acceleration_limits: true
+    max_acceleration: 10.0
+  joint2:
+    has_velocity_limits: true
+    max_velocity: 2.63
+    has_acceleration_limits: true
+    max_acceleration: 10.0
+  joint3:
+    has_velocity_limits: true
+    max_velocity: 3.65
+    has_acceleration_limits: true
+    max_acceleration: 10.0
+  # joint4~joint6：腕部关节，URDF 速度上限 4.16 rad/s
+  joint4:
+    has_velocity_limits: true
+    max_velocity: 4.16
+    has_acceleration_limits: true
+    max_acceleration: 20.0
+  joint5:
+    has_velocity_limits: true
+    max_velocity: 4.16
+    has_acceleration_limits: true
+    max_acceleration: 20.0
+  joint6:
+    has_velocity_limits: true
+    max_velocity: 4.16
+    has_acceleration_limits: true
+    max_acceleration: 20.0

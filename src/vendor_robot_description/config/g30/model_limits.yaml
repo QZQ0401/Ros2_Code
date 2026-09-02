@@ -1,0 +1,4 @@
+# G30-specific mechanical limits.  MoveIt limits are maintained in the
+# corresponding vendor_robot_moveit_config/config/g30/joint_limits.yaml.
+robot_model: G30
+joint_count: 6

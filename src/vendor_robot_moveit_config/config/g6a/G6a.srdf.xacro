@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="G6a">
+  <xacro:arg name="prefix" default=""/>
+  <xacro:property name="prefix" value="$(arg prefix)"/>
+  <group name="arm">
+    <joint name="${prefix}joint1"/><joint name="${prefix}joint2"/>
+    <joint name="${prefix}joint3"/><joint name="${prefix}joint4"/>
+    <joint name="${prefix}joint5"/><joint name="${prefix}joint6"/>
+  </group>
+  <group_state name="pose1" group="arm">
+    <joint name="${prefix}joint1" value="0"/><joint name="${prefix}joint2" value="0"/>
+    <joint name="${prefix}joint3" value="0"/><joint name="${prefix}joint4" value="0"/>
+    <joint name="${prefix}joint5" value="0"/><joint name="${prefix}joint6" value="0"/>
+  </group_state>
+  <disable_collisions link1="${prefix}Link1" link2="${prefix}Link2" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}Link1" link2="${prefix}Link3" reason="Never"/>
+  <disable_collisions link1="${prefix}Link1" link2="${prefix}Link4" reason="Never"/>
+  <disable_collisions link1="${prefix}Link1" link2="${prefix}base_link" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}Link2" link2="${prefix}Link3" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}Link2" link2="${prefix}Link4" reason="Never"/>
+  <disable_collisions link1="${prefix}Link3" link2="${prefix}Link4" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}Link3" link2="${prefix}Link5" reason="Never"/>
+  <disable_collisions link1="${prefix}Link4" link2="${prefix}Link5" reason="Adjacent"/>
+  <disable_collisions link1="${prefix}Link4" link2="${prefix}Link6" reason="Never"/>
+  <disable_collisions link1="${prefix}Link5" link2="${prefix}Link6" reason="Adjacent"/>
+</robot>

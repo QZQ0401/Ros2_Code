@@ -1,0 +1,4 @@
+# G6a-specific mechanical limits.  MoveIt limits are maintained in the
+# corresponding vendor_robot_moveit_config/config/g6a/joint_limits.yaml.
+robot_model: G6a
+joint_count: 6

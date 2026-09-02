@@ -4,7 +4,6 @@
 
 本包实现 ros2_control `SystemInterface` 插件 `vendor_robot_hardware/RtdeSystem`，负责硬件生命周期、资源接口、RTDE 快照交换、命令整形和安全停止。
 
-它不创建 ROS node、service、topic、action 或额外 executor；ROS 接口由 controller manager 中的控制器提供。
 
 ## 2. 目录结构
 

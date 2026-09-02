@@ -2,16 +2,24 @@
 
 ## 1. 功能包作用
 
-本包是 G4 驱动的统一启动入口。`robot.launch.py` 根据 `mode` 选择真实 RTDE 硬件或 `mock_components/GenericSystem`，动态生成 ros2_control 参数，启动控制器、SDK 管理和诊断节点。
+本包是多机型共用的统一启动入口。`robot.launch.py` 根据 `robot_type` 选择 description 中的模型，`mode` 选择真实 RTDE 硬件或 `mock_components/GenericSystem`；driver、hardware、controller、SDK 节点始终只有一套。
 
-本包自身不实现消息回调或网络通信，主要负责启动顺序、参数传递、namespace/prefix 和控制器生命周期。
+例如：
+
+```bash
+ros2 launch vendor_robot_bringup robot.launch.py robot_type:=g6 mode:=real robot_ip:=192.168.6.6
+ros2 launch vendor_robot_moveit_config real_moveit.launch.py robot_type:=g6 robot_ip:=192.168.6.6
+```
+
+新增机型时，只需在 `vendor_robot_description/urdf/<model>/` 和 `meshes/<model>/` 增加模型入口/数据，并在 MoveIt 配置中增加对应的 URDF/SRDF 文件，再把型号加入两个 launch 文件的映射表；控制器参数和硬件插件无需复制。
+
 
 ## 2. 目录结构
 
 ```text
 vendor_robot_bringup/
 ├── config/diagnostics.yaml
-├── launch/robot.launch.py
+├── launch/robot.launch.py       # 所有机型共用的启动入口
 ├── CMakeLists.txt
 ├── package.xml
 └── README.md
@@ -48,6 +56,7 @@ Humble 中 controller `type` 属于 controller manager，而 `joints`、command/
 
 | 参数 | 默认值 | 作用 |
 |---|---:|---|
+| `robot_type` | `g4` | 机器人型号 |
 | `mode` | `real` | `real` 或 `fake` |
 | `robot_ip` | `192.168.6.6` | 控制器 IP |
 | `network_interface` | 空 | RTDE 绑定网卡 |
@@ -124,7 +133,5 @@ robot.launch.py
   ├─ controller_stopper_node
   └─ diagnostics_bridge_node
 ```
-
-`arm_controller` 激活后自动 claim 六个 position command interface。硬件为 `unconfigured` 时必须先排查 RTDE 首帧、参数或接口校验错误，不能手动 claim。
 
 
