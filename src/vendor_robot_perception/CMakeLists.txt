@@ -28,7 +28,7 @@ find_package(std_msgs REQUIRED)
 
 find_package(visualization_msgs REQUIRED)
 
-
+find_package(message_filters REQUIRED)
 # ============================================================
 # TF
 # ============================================================
@@ -78,10 +78,14 @@ add_executable(
   src/target_estimator.cpp
 )
 
+add_executable(
+  multi_camera_cloud_fusion
+  src/multi_camera_cloud_fusion.cpp
+)
+
 
 ament_target_dependencies(
   target_estimator
-
   rclcpp
 
   sensor_msgs
@@ -100,9 +104,25 @@ ament_target_dependencies(
   moveit_ros_planning_interface
 )
 
+ament_target_dependencies(
+  multi_camera_cloud_fusion
+  rclcpp
+  sensor_msgs
+  message_filters
+  tf2
+  tf2_ros
+  pcl_conversions
+)
+
 
 target_include_directories(
   target_estimator
+  PRIVATE
+  ${PCL_INCLUDE_DIRS}
+)
+
+target_include_directories(
+  multi_camera_cloud_fusion
   PRIVATE
   ${PCL_INCLUDE_DIRS}
 )
@@ -113,9 +133,20 @@ target_link_libraries(
   ${PCL_LIBRARIES}
 )
 
+target_link_libraries(
+  multi_camera_cloud_fusion
+  ${PCL_LIBRARIES}
+)
+
 
 target_compile_definitions(
   target_estimator
+  PRIVATE
+  ${PCL_DEFINITIONS}
+)
+
+target_compile_definitions(
+  multi_camera_cloud_fusion
   PRIVATE
   ${PCL_DEFINITIONS}
 )
@@ -128,7 +159,7 @@ target_compile_definitions(
 install(
   TARGETS
   target_estimator
-
+  multi_camera_cloud_fusion
   DESTINATION
   lib/${PROJECT_NAME}
 )

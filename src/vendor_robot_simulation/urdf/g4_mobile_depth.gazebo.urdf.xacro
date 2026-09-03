@@ -5,6 +5,8 @@
   <xacro:arg name="use_gravity" default="false"/>
   <!-- true：底盘固定在世界坐标系；false：为恢复差速移动预留。 -->
   <xacro:arg name="fixed_mobile_base" default="true"/>
+  <!-- 机器人相对于世界坐标系的初始高度；由 URDF TF 统一表达。 -->
+  <xacro:arg name="spawn_z" default="0.055"/>
   <xacro:arg name="initial_positions_file" default="$(find vendor_robot_description)/config/initial_positions.yaml"/>
   <xacro:arg name="controllers_file" default="$(find vendor_robot_simulation)/config/controllers.yaml"/>
 
@@ -128,7 +130,7 @@
     <joint name="${prefix}world_to_mobile_base" type="fixed">
       <parent link="world"/>
       <child link="${prefix}mobile_base_link"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 $(arg spawn_z)" rpy="0 0 0"/>
     </joint>
   </xacro:if>
   <joint name="${prefix}mobile_base_to_base_footprint" type="fixed">
@@ -188,7 +190,7 @@
     <parent link="${prefix}depth_camera_link"/>
     <child link="${prefix}depth_camera_optical_frame"/>
     <!-- ROS optical frame: X right, Y down, Z forward. -->
-    <origin xyz="0.08 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+    <origin xyz="0.0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
   </joint>
 
   <gazebo reference="${prefix}depth_camera_link">

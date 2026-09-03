@@ -34,6 +34,7 @@ def _setup(context):
             "prefix": prefix,
             "use_gravity": use_gravity,
             "fixed_mobile_base": fixed_mobile_base,
+            "spawn_z": spawn_z,
         }).toxml()
     robot_description = re.sub(r"<\?xml[^>]*\?>", "", robot_description)
     robot_description = re.sub(r"<!--.*?-->", "", robot_description, flags=re.DOTALL).strip()
@@ -44,10 +45,9 @@ def _setup(context):
         FindPackageShare("gazebo_ros").perform(context), "launch", "gazebo.launch.py")
     spawn_entity = Node(
         package="gazebo_ros", executable="spawn_entity.py",
-        # At z=0.05 the 0.10 m radius drive wheels start in exact contact
-        # with the ground plane.  A small initial clearance avoids Gazebo
-        # resolving that contact by placing the wheel collision below ground.
-        arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", spawn_z],
+        # The initial height is encoded by world_to_mobile_base in the URDF,
+        # so Gazebo must spawn the model at the origin to avoid double offset.
+        arguments=["-topic", "robot_description", "-entity", "g4", "-x", "0.0", "-y", "0.0", "-z", "0.0"],
         output="screen")
     joint_state_spawner = Node(
         package="controller_manager", executable="spawner",
@@ -108,7 +108,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "spawn_z",
             default_value="0.055",
-            description="机器人生成高度（m）；默认给轮子保留 5 mm 的初始离地间隙",
+            description="机器人相对于世界坐标系的初始高度（m），由 URDF TF 表达",
         ),
         DeclareLaunchArgument(
             "world",

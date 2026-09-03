@@ -1,16 +1,40 @@
 # Must be the MoveIt planning frame and connected to the camera through TF.
-octomap_frame: base_footprint
-octomap_resolution: 0.02
+octomap_frame: world
+octomap_resolution: 0.01
 
 sensors:
   - depth_camera
+  - workspace_camera
+  - workspace_camera_2
 depth_camera:
   # Gazebo depth-camera plugin in g4_mobile_depth.gazebo.urdf.xacro.
   point_cloud_topic: /depth_camera/points
   filtered_cloud_topic: /depth_camera/filtered_points
-  max_range: 3.0
+  max_range: 2.0
   max_update_rate: 5.0
   padding_offset: 0.01
   padding_scale: 1.0
   point_subsample: 2
   sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+
+
+# 固定工作区相机
+workspace_camera:
+  point_cloud_topic: /workspace_camera/points
+  filtered_cloud_topic: /workspace_camera/filtered_points
+  max_range: 3.0
+  max_update_rate: 5.0
+  padding_offset: 0.01  #固定膨胀偏移量
+  padding_scale: 1.0  #距离相关膨胀系数
+  point_subsample: 2  #点云降采样步长
+  # sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+
+workspace_camera_2:
+  point_cloud_topic: /workspace_camera_2/points
+  filtered_cloud_topic: /workspace_camera_2/filtered_points
+  max_range: 3.0
+  max_update_rate: 5.0
+  padding_offset: 0.01  #固定膨胀偏移量
+  padding_scale: 1.0  #距离相关膨胀系数
+  point_subsample: 2  #点云降采样步长
+  # sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater

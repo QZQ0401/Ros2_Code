@@ -26,4 +26,4 @@ moveit_simple_controller_manager:
     joints:
       - gripper_left_joint
     command_joint: gripper_left_joint
-    max_effort: 10.0
+    max_effort: 3.0

@@ -81,6 +81,7 @@ def _setup(context):
     prefix = _value(context, "prefix")
     use_gravity = _value(context, "use_gravity")
     fixed_mobile_base = _value(context, "fixed_mobile_base")
+    spawn_z = _value(context, "spawn_z")
     # 固定底盘不再由差速插件发布 odom，碰撞物体应直接使用 URDF 根坐标系。
     planning_scene_frame = "world" if _as_bool(
         fixed_mobile_base, "fixed_mobile_base"
@@ -90,6 +91,10 @@ def _setup(context):
     start_move_l_server = _as_bool(
         _value(context, "start_move_l_server"),
         "start_move_l_server",
+    )
+    start_perception = _as_bool(
+        _value(context, "start_perception"),
+        "start_perception",
     )
     allow_trajectory_execution = _as_bool(
         _value(context, "allow_trajectory_execution"),
@@ -112,6 +117,9 @@ def _setup(context):
     moveit_share = Path(
         get_package_share_directory("vendor_robot_moveit_config")
     )
+    perception_share = Path(
+        get_package_share_directory("vendor_robot_perception")
+    )
 
     # 复用已有的 Gazebo + ros2_control 独立启动文件。
     simulation_launch = IncludeLaunchDescription(
@@ -122,16 +130,80 @@ def _setup(context):
             "prefix": prefix,
             "use_gravity": use_gravity,
             "fixed_mobile_base": fixed_mobile_base,
+            "spawn_z": spawn_z,
             "world": world,
         }.items(),
     )
 
+    workspace_camera_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="workspace_camera_tf",
+        arguments=[
+            "--x", "0.3",
+            "--y", "2",
+            "--z", "1.5",
+            "--roll", "0",
+            "--pitch", "0.534",
+            "--yaw", "-1.57079632679",
+            "--frame-id", "world",
+            "--child-frame-id", "workspace_camera_link",
+        ],
+    )
+
+    workspace_camera_optical_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="workspace_camera_optical_tf",
+        arguments=[
+            "--x", "0",
+            "--y", "0",
+            "--z", "0",
+            "--roll", "-1.57079632679",
+            "--pitch", "0",
+            "--yaw", "-1.57079632679",
+            "--frame-id", "workspace_camera_link",
+            "--child-frame-id", "workspace_camera_optical_frame",
+        ],
+    )
+
+    workspace_camera_2_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="workspace_camera_2_tf",
+        arguments=[
+            "--x", "1.4",
+            "--y", "0.7",
+            "--z", "1.5",
+            "--roll", "0",
+            "--pitch", "0.434",
+            "--yaw", "3.14159265359",
+            "--frame-id", "world",
+            "--child-frame-id", "workspace_camera_2_link",
+        ],
+    )
+
+    workspace_camera_2_optical_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="workspace_camera_2_optical_tf",
+        arguments=[
+            "--x", "0",
+            "--y", "0",
+            "--z", "0",
+            "--roll", "-1.57079632679",
+            "--pitch", "0",
+            "--yaw", "-1.57079632679",
+            "--frame-id", "workspace_camera_2_link",
+            "--child-frame-id", "workspace_camera_2_optical_frame",
+        ],
+    )
     # MoveIt 与 Gazebo 必须使用同一组合模型（移动底盘、机械臂和深度相机）。
     simulation_urdf = simulation_share / "urdf" / "g4_mobile_depth.gazebo.urdf.xacro"
     mobile_robot_description = ParameterValue(Command([
         FindExecutable(name="xacro"), " ", str(simulation_urdf),
         " prefix:=", prefix, " use_gravity:=", use_gravity,
-        " fixed_mobile_base:=", fixed_mobile_base,
+        " fixed_mobile_base:=", fixed_mobile_base, " spawn_z:=", spawn_z,
     ]), value_type=str)
     moveit_config = (
         MoveItConfigsBuilder(
@@ -154,9 +226,9 @@ def _setup(context):
         .trajectory_execution(
             file_path="config/moveit_controllers.yaml"
         )
-        # .sensors_3d(
-        #     file_path="config/sensors_3d.yaml"
-        # )
+        .sensors_3d(
+            file_path="config/sensors_3d.yaml"
+        )
         .planning_pipelines(
             pipelines=["ompl"]
         )
@@ -209,7 +281,10 @@ def _setup(context):
                 # 与 pick_scene.world 中的静态模型保持一致；同步节点只会
                 # 将此列表内的 Gazebo 模型转换为 MoveIt 碰撞对象。
                 {"obstacle_models": ["work_table", "obstacle_box"]},
-                {"pick_models": ["grasp_box"]},
+                # grasp_box 只由双相机视觉生成 vision_target，
+                # 不再把 Gazebo 真值复制到 PlanningScene。这里不传
+                # pick_models；节点的默认值就是空列表，而 ROS 2 launch
+                # 无法将空数组序列化为参数值。
                 {"table_size": [2.2, 0.8, 0.8]},
                 {"obstacle_box_size": [0.03, 0.55, 0.25]},
                 {"grasp_box_size": [0.05, 0.05, 0.05]},
@@ -223,6 +298,19 @@ def _setup(context):
         #     parameters=common_parameters,
         # )
     ]
+
+    if start_perception:
+        moveit_nodes.append(
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    str(
+                        perception_share
+                        / "launch"
+                        / "target_estimator.launch.py"
+                    )
+                )
+            )
+        )
 
     if start_move_l_server:
         moveit_nodes.append(
@@ -274,10 +362,15 @@ def _setup(context):
                 "启动 G4 Gazebo + MoveIt 联合仿真："
                 f"use_gravity={use_gravity}, "
                 f"trajectory_execution={allow_trajectory_execution}, "
+                f"perception={start_perception}, "
                 f"rviz={start_rviz}"
             )
         ),
         simulation_launch,
+        workspace_camera_tf,
+        workspace_camera_optical_tf,
+        workspace_camera_2_tf,
+        workspace_camera_2_optical_tf,
         waiter,
         RegisterEventHandler(
             OnProcessExit(
@@ -312,6 +405,11 @@ def generate_launch_description():
                 description="是否将移动底盘固定在 Gazebo 世界坐标系中",
             ),
             DeclareLaunchArgument(
+                "spawn_z",
+                default_value="0.055",
+                description="机器人相对于世界坐标系的初始高度（m），由 URDF TF 表达",
+            ),
+            DeclareLaunchArgument(
                 "world",
                 default_value=str(default_world),
                 description="Gazebo world 文件；默认加载带桌子和箱子的 pick_scene.world",
@@ -320,6 +418,11 @@ def generate_launch_description():
                 "start_rviz",
                 default_value="true",
                 description="是否启动 MoveIt RViz2",
+            ),
+            DeclareLaunchArgument(
+                "start_perception",
+                default_value="false",
+                description="是否启动双工作区相机融合与视觉目标估计",
             ),
             DeclareLaunchArgument(
                 "start_move_l_server",

@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <deque>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -17,9 +19,11 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
 
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/header.hpp>
 
 #include <visualization_msgs/msg/marker.hpp>
 
@@ -34,6 +38,7 @@
 
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
+#include <pcl/common/transforms.h>
 
 #include <pcl/filters/filter.h>
 #include <pcl/filters/passthrough.h>
@@ -73,10 +78,10 @@ public:
     // 当前cluster点云
     CloudPtr cloud;
 
-    // 相机坐标系中的物体中心
+    // output_frame_/world坐标系中的物体中心
     Eigen::Vector3f center;
 
-    // 物体坐标系到相机坐标系的旋转矩阵
+    // 物体坐标系到output_frame_/world的旋转矩阵
     //
     // column 0 -> object X
     // column 1 -> object Y
@@ -91,6 +96,13 @@ public:
   };
 
 
+  struct WorldCloudFrame
+  {
+    rclcpp::Time stamp;
+    CloudPtr cloud;
+  };
+
+
   TargetEstimator()
   : Node("target_estimator")
   {
@@ -100,11 +112,32 @@ public:
 
     declare_parameter<std::string>(
       "input_cloud_topic",
-      "/depth_camera/points");
+      "/workspace/merged_points");
 
     declare_parameter<std::string>(
       "output_frame",
       "world");
+
+    // 用于“从哪个方向挑选目标”的参考 optical frame。
+    // 几何估计始终在 output_frame/world 中进行；
+    // 这里只保留原来的“更靠近相机光轴的 cluster 优先”策略。
+    declare_parameter<std::string>(
+      "selection_frame",
+      "workspace_camera_optical_frame");
+
+    // true 时输入已经是多相机融合点云。
+    // 这时不再按“相机 z 深度”裁剪，而是在 world/output_frame 中
+    // 使用下面的 workspace XYZ 范围裁剪。
+    declare_parameter<bool>(
+      "input_is_fused_cloud",
+      true);
+
+    declare_parameter<double>("workspace_min_x", -1.05);
+    declare_parameter<double>("workspace_max_x",  1.05);
+    declare_parameter<double>("workspace_min_y",  0.30);
+    declare_parameter<double>("workspace_max_y",  1.10);
+    declare_parameter<double>("workspace_min_z",  0.79);
+    declare_parameter<double>("workspace_max_z",  1.30);
 
     declare_parameter<std::string>(
       "target_id",
@@ -125,12 +158,12 @@ public:
 
     declare_parameter<double>(
       "voxel_leaf_size",
-      0.004);
+      0.002);
 
 
     declare_parameter<double>(
       "plane_distance_threshold",
-      0.008);
+      0.003);
 
     declare_parameter<int>(
       "plane_max_iterations",
@@ -140,10 +173,14 @@ public:
       "plane_min_inliers",
       300);
 
+    declare_parameter<double>(
+      "plane_max_tilt_deg",
+      10.0);
+
 
     declare_parameter<double>(
       "cluster_tolerance",
-      0.018);
+      0.008);
 
     declare_parameter<int>(
       "min_cluster_size",
@@ -177,8 +214,32 @@ public:
 
 
     declare_parameter<double>(
+      "pca_anisotropy_threshold",
+      0.15);
+
+    declare_parameter<double>(
+      "planar_percentile_low",
+      0.02);
+
+    declare_parameter<double>(
+      "planar_percentile_high",
+      0.98);
+
+
+    // 先融合world点云，再进行几何估计。
+    // 固定工作区相机建议10~20帧。
+    declare_parameter<int>(
+      "fusion_frames",
+      10);
+
+    declare_parameter<double>(
+      "fusion_max_age",
+      2.0);
+
+
+    declare_parameter<double>(
       "smoothing_alpha",
-      0.30);
+      1.0);
 
     declare_parameter<double>(
       "stable_position_threshold",
@@ -207,7 +268,7 @@ public:
 
     declare_parameter<double>(
       "collision_padding",
-      0.003);
+      0.0);
 
 
     declare_parameter<double>(
@@ -226,6 +287,29 @@ public:
     output_frame_ =
       get_parameter(
         "output_frame").as_string();
+
+    selection_frame_ =
+      get_parameter(
+        "selection_frame").as_string();
+
+    input_is_fused_cloud_ =
+      get_parameter(
+        "input_is_fused_cloud").as_bool();
+
+    workspace_min_x_ = get_parameter("workspace_min_x").as_double();
+    workspace_max_x_ = get_parameter("workspace_max_x").as_double();
+    workspace_min_y_ = get_parameter("workspace_min_y").as_double();
+    workspace_max_y_ = get_parameter("workspace_max_y").as_double();
+    workspace_min_z_ = get_parameter("workspace_min_z").as_double();
+    workspace_max_z_ = get_parameter("workspace_max_z").as_double();
+
+    if (workspace_min_x_ >= workspace_max_x_ ||
+        workspace_min_y_ >= workspace_max_y_ ||
+        workspace_min_z_ >= workspace_max_z_)
+    {
+      throw std::runtime_error(
+        "workspace min bounds must be smaller than max bounds");
+    }
 
     target_id_ =
       get_parameter(
@@ -261,6 +345,10 @@ public:
       get_parameter(
         "plane_min_inliers").as_int();
 
+    plane_max_tilt_deg_ =
+      get_parameter(
+        "plane_max_tilt_deg").as_double();
+
 
     cluster_tolerance_ =
       get_parameter(
@@ -295,6 +383,33 @@ public:
     max_axis_ratio_ =
       get_parameter(
         "max_axis_ratio").as_double();
+
+
+    pca_anisotropy_threshold_ =
+      get_parameter(
+        "pca_anisotropy_threshold").as_double();
+
+    planar_percentile_low_ =
+      get_parameter(
+        "planar_percentile_low").as_double();
+
+    planar_percentile_high_ =
+      get_parameter(
+        "planar_percentile_high").as_double();
+
+
+    fusion_frames_ =
+      std::max(
+        1,
+        static_cast<int>(
+          get_parameter(
+            "fusion_frames").as_int()));
+
+    fusion_max_age_ =
+      std::max(
+        0.0,
+        get_parameter(
+          "fusion_max_age").as_double());
 
 
     smoothing_alpha_ =
@@ -504,8 +619,20 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
+      "融合点云模式: %s, 目标选择参考坐标系: %s",
+      input_is_fused_cloud_ ? "true" : "false",
+      selection_frame_.c_str());
+
+    RCLCPP_INFO(
+      get_logger(),
       "PlanningScene目标ID: %s",
       target_id_.c_str());
+
+    RCLCPP_INFO(
+      get_logger(),
+      "World点云融合: %d帧, 最大历史%.2fs",
+      fusion_frames_,
+      fusion_max_age_);
   }
 
 
@@ -585,44 +712,46 @@ private:
 
 
     // ========================================================
-    // 深度PassThrough
+    // 输入预处理
     //
-    // ROS optical frame中：
+    // 单相机模式：
+    //   min_depth/max_depth 仍然表示 optical frame 的 z 深度。
     //
-    // X -> 右
-    // Y -> 下
-    // Z -> 前
-    //
-    // 因此过滤Z即可限制相机观测距离。
+    // 多相机融合模式：
+    //   /workspace/merged_points 已经位于 world/output_frame，
+    //   不能再把 world Z 当作相机深度；因此这里先跳过深度裁剪，
+    //   在转换到 output_frame 后使用 workspace XYZ 范围裁剪。
     // ========================================================
 
-    CloudPtr depth_cloud(
+    CloudPtr pre_transform_cloud(
       new Cloud);
 
 
-    pcl::PassThrough<PointT>
-      pass;
+    if (input_is_fused_cloud_)
+    {
+      *pre_transform_cloud = *clean_cloud;
+    }
+    else
+    {
+      pcl::PassThrough<PointT>
+        depth_pass;
+
+      depth_pass.setInputCloud(
+        clean_cloud);
+
+      depth_pass.setFilterFieldName(
+        "z");
+
+      depth_pass.setFilterLimits(
+        static_cast<float>(min_depth_),
+        static_cast<float>(max_depth_));
+
+      depth_pass.filter(
+        *pre_transform_cloud);
+    }
 
 
-    pass.setInputCloud(
-      clean_cloud);
-
-    pass.setFilterFieldName(
-      "z");
-
-    pass.setFilterLimits(
-      static_cast<float>(
-        min_depth_),
-
-      static_cast<float>(
-        max_depth_));
-
-
-    pass.filter(
-      *depth_cloud);
-
-
-    if (depth_cloud->empty())
+    if (pre_transform_cloud->empty())
     {
       handleDetectionMiss();
 
@@ -631,7 +760,353 @@ private:
 
 
     // ========================================================
-    // VoxelGrid
+    // 使用点云自身timestamp查询 Camera -> World TF
+    //
+    // 从这里开始：
+    //   桌面分割 / 聚类 / PCA / OBB / Pose / Size
+    // 全部在output_frame_中进行。
+    // ========================================================
+
+    geometry_msgs::msg::TransformStamped
+      camera_to_world_message;
+
+
+    try
+    {
+      camera_to_world_message =
+        tf_buffer_->lookupTransform(
+          output_frame_,
+          message->header.frame_id,
+          message_time,
+          rclcpp::Duration::from_seconds(
+            tf_timeout_));
+    }
+    catch (
+      const tf2::TransformException &
+        exception)
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(),
+        *get_clock(),
+        2000,
+        "无法将点云转换到%s: %s",
+        output_frame_.c_str(),
+        exception.what());
+
+      handleDetectionMiss();
+
+      return;
+    }
+
+
+    Eigen::Quaternionf
+      camera_to_world_q(
+        static_cast<float>(
+          camera_to_world_message.
+            transform.rotation.w),
+        static_cast<float>(
+          camera_to_world_message.
+            transform.rotation.x),
+        static_cast<float>(
+          camera_to_world_message.
+            transform.rotation.y),
+        static_cast<float>(
+          camera_to_world_message.
+            transform.rotation.z));
+
+
+    if (
+      camera_to_world_q.norm() <
+      1e-6f)
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(),
+        *get_clock(),
+        2000,
+        "Camera -> %s TF四元数无效",
+        output_frame_.c_str());
+
+      handleDetectionMiss();
+
+      return;
+    }
+
+
+    camera_to_world_q.normalize();
+
+
+    Eigen::Affine3f
+      camera_to_world =
+        Eigen::Affine3f::Identity();
+
+
+    camera_to_world.linear() =
+      camera_to_world_q.
+        toRotationMatrix();
+
+    camera_to_world.translation() <<
+      static_cast<float>(
+        camera_to_world_message.
+          transform.translation.x),
+      static_cast<float>(
+        camera_to_world_message.
+          transform.translation.y),
+      static_cast<float>(
+        camera_to_world_message.
+          transform.translation.z);
+
+
+    // ========================================================
+    // 整帧点云先转换到World
+    // ========================================================
+
+    CloudPtr current_world_cloud(
+      new Cloud);
+
+
+    pcl::transformPointCloud(
+      *pre_transform_cloud,
+      *current_world_cloud,
+      camera_to_world);
+
+
+    // ========================================================
+    // 融合点云模式下，在 output_frame/world 中裁剪工作区。
+    //
+    // 这一步非常重要：
+    //   1. 两个相机已经从不同方向观察，不能再使用某一个相机的深度轴；
+    //   2. 直接裁出桌面工作区可显著减少机器人、地面和远处模型干扰；
+    //   3. 后面的 RANSAC / clustering / OBB 都在同一个 world frame 中。
+    // ========================================================
+
+    if (input_is_fused_cloud_)
+    {
+      auto crop_axis =
+        [](const CloudPtr & input,
+           const std::string & field,
+           double min_value,
+           double max_value) -> CloudPtr
+        {
+          CloudPtr output(new Cloud);
+
+          pcl::PassThrough<PointT> crop;
+          crop.setInputCloud(input);
+          crop.setFilterFieldName(field);
+          crop.setFilterLimits(
+            static_cast<float>(min_value),
+            static_cast<float>(max_value));
+          crop.filter(*output);
+
+          return output;
+        };
+
+
+      current_world_cloud =
+        crop_axis(
+          current_world_cloud,
+          "x",
+          workspace_min_x_,
+          workspace_max_x_);
+
+      current_world_cloud =
+        crop_axis(
+          current_world_cloud,
+          "y",
+          workspace_min_y_,
+          workspace_max_y_);
+
+      current_world_cloud =
+        crop_axis(
+          current_world_cloud,
+          "z",
+          workspace_min_z_,
+          workspace_max_z_);
+
+
+      if (current_world_cloud->empty())
+      {
+        handleDetectionMiss();
+        return;
+      }
+    }
+
+
+    // ========================================================
+    // 为目标选择准备一个独立的 optical reference frame。
+    //
+    // 输入 fused cloud 的 frame_id 是 world，因此不能再用
+    // input frame 来代表“相机光轴”。几何估计仍在 world 中，
+    // 这里只把候选中心临时变换到 selection_frame_ 来计算 score。
+    // ========================================================
+
+    Eigen::Affine3f
+      world_to_selection =
+        Eigen::Affine3f::Identity();
+
+
+    if (!selection_frame_.empty())
+    {
+      try
+      {
+        const auto selection_from_world_message =
+          tf_buffer_->lookupTransform(
+            selection_frame_,
+            output_frame_,
+            message_time,
+            rclcpp::Duration::from_seconds(
+              tf_timeout_));
+
+
+        Eigen::Quaternionf selection_q(
+          static_cast<float>(
+            selection_from_world_message.transform.rotation.w),
+          static_cast<float>(
+            selection_from_world_message.transform.rotation.x),
+          static_cast<float>(
+            selection_from_world_message.transform.rotation.y),
+          static_cast<float>(
+            selection_from_world_message.transform.rotation.z));
+
+
+        if (selection_q.norm() < 1e-6f)
+        {
+          throw std::runtime_error(
+            "selection_frame TF quaternion is invalid");
+        }
+
+
+        selection_q.normalize();
+
+        world_to_selection.linear() =
+          selection_q.toRotationMatrix();
+
+        world_to_selection.translation() <<
+          static_cast<float>(
+            selection_from_world_message.transform.translation.x),
+          static_cast<float>(
+            selection_from_world_message.transform.translation.y),
+          static_cast<float>(
+            selection_from_world_message.transform.translation.z);
+      }
+      catch (const std::exception & exception)
+      {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(),
+          *get_clock(),
+          2000,
+          "无法获取目标选择参考坐标系 %s <- %s: %s",
+          selection_frame_.c_str(),
+          output_frame_.c_str(),
+          exception.what());
+
+        handleDetectionMiss();
+        return;
+      }
+    }
+
+
+    // ========================================================
+    // 10~20帧World点云融合
+    //
+    // 先融合，再VoxelGrid，再做RANSAC/Cluster/OBB。
+    // 这样多帧能补足单帧缺失表面，而不是只对最终Pose/Size做EMA。
+    // ========================================================
+
+    if (
+      !world_cloud_history_.empty() &&
+      message_time <
+        world_cloud_history_.back().stamp)
+    {
+      // Gazebo /clock复位或时间跳变时，旧点云不能继续融合。
+      world_cloud_history_.clear();
+    }
+
+
+    world_cloud_history_.push_back(
+      WorldCloudFrame{
+        message_time,
+        current_world_cloud});
+
+
+    while (
+      world_cloud_history_.size() >
+      static_cast<std::size_t>(
+        fusion_frames_))
+    {
+      world_cloud_history_.pop_front();
+    }
+
+
+    if (fusion_max_age_ > 0.0)
+    {
+      while (
+        !world_cloud_history_.empty())
+      {
+        const double age =
+          (
+            message_time -
+            world_cloud_history_.front().stamp
+          ).seconds();
+
+        if (
+          age >= 0.0 &&
+          age <= fusion_max_age_)
+        {
+          break;
+        }
+
+        world_cloud_history_.pop_front();
+      }
+    }
+
+
+    CloudPtr fused_world_cloud(
+      new Cloud);
+
+
+    std::size_t total_points =
+      0;
+
+    for (
+      const auto & frame :
+      world_cloud_history_)
+    {
+      if (frame.cloud)
+      {
+        total_points +=
+          frame.cloud->size();
+      }
+    }
+
+
+    fused_world_cloud->reserve(
+      total_points);
+
+
+    for (
+      const auto & frame :
+      world_cloud_history_)
+    {
+      if (!frame.cloud)
+      {
+        continue;
+      }
+
+      *fused_world_cloud +=
+        *frame.cloud;
+    }
+
+
+    if (fused_world_cloud->empty())
+    {
+      handleDetectionMiss();
+
+      return;
+    }
+
+
+    // ========================================================
+    // 融合后的World点云再做VoxelGrid
     // ========================================================
 
     CloudPtr filtered_cloud(
@@ -643,7 +1118,7 @@ private:
 
 
     voxel.setInputCloud(
-      depth_cloud);
+      fused_world_cloud);
 
     voxel.setLeafSize(
       static_cast<float>(
@@ -660,10 +1135,20 @@ private:
       *filtered_cloud);
 
 
+    std_msgs::msg::Header
+      world_header;
+
+    world_header.stamp =
+      message->header.stamp;
+
+    world_header.frame_id =
+      output_frame_;
+
+
     publishCloud(
       filtered_cloud_pub_,
       filtered_cloud,
-      message->header);
+      world_header);
 
 
     if (
@@ -679,6 +1164,9 @@ private:
 
     // ========================================================
     // RANSAC检测桌面
+    //
+    // 只允许平面法向接近World +Z，避免把墙、箱体侧面、机器人结构
+    // 误识别为桌面。
     // ========================================================
 
     pcl::ModelCoefficients::Ptr
@@ -699,10 +1187,28 @@ private:
       true);
 
     segmentation.setModelType(
-      pcl::SACMODEL_PLANE);
+      pcl::SACMODEL_PERPENDICULAR_PLANE);
 
     segmentation.setMethodType(
       pcl::SAC_RANSAC);
+
+    segmentation.setAxis(
+      Eigen::Vector3f(
+        0.0f,
+        0.0f,
+        1.0f));
+
+    const double plane_max_tilt_rad =
+      std::clamp(
+        plane_max_tilt_deg_,
+        0.1,
+        89.0) *
+      std::acos(-1.0) /
+      180.0;
+
+
+    segmentation.setEpsAngle(
+      plane_max_tilt_rad);
 
     segmentation.setMaxIterations(
       plane_max_iterations_);
@@ -730,7 +1236,7 @@ private:
         get_logger(),
         *get_clock(),
         2000,
-        "没有找到足够稳定的桌面平面");
+        "没有找到足够稳定且接近水平的桌面平面");
 
       handleDetectionMiss();
 
@@ -766,7 +1272,7 @@ private:
     publishCloud(
       plane_cloud_pub_,
       plane_cloud,
-      message->header);
+      world_header);
 
 
     // ========================================================
@@ -787,7 +1293,7 @@ private:
     publishCloud(
       no_plane_cloud_pub_,
       object_cloud,
-      message->header);
+      world_header);
 
 
     if (
@@ -837,28 +1343,10 @@ private:
 
 
     // ========================================================
-    // 让桌面法向朝向相机
-    //
-    // 相机原点为0。
-    //
-    // 平面上的最近点：
-    //
-    // p0 = -d * n
-    //
-    // 从平面指向相机：
-    //
-    // 0 - p0 = d*n
-    //
-    // 因此希望d为正。
-    //
-    // 对桌面上的物体而言：
-    //
-    // distance = n·p + d
-    //
-    // 会得到正的物体高度。
+    // 强制桌面法向始终朝World +Z
     // ========================================================
 
-    if (plane_d < 0.0f)
+    if (plane_normal.z() < 0.0f)
     {
       plane_normal =
         -plane_normal;
@@ -926,6 +1414,11 @@ private:
 
     // ========================================================
     // 从所有cluster中选择目标
+    //
+    // 几何估计全部在World中完成。
+    // 多相机输入时使用 selection_frame_（默认第一台相机 optical frame）
+    // 作为独立的“目标选择观察方向”，而不是错误地把 fused cloud 的
+    // world frame 当作相机 frame。
     // ========================================================
 
     Candidate best_candidate;
@@ -973,6 +1466,43 @@ private:
       }
 
 
+      const Eigen::Vector3f
+        center_selection =
+          world_to_selection *
+          candidate.center;
+
+
+      if (center_selection.z() <= 1e-4f)
+      {
+        continue;
+      }
+
+
+      const double axis_ratio =
+        std::hypot(
+          static_cast<double>(
+            center_selection.x()),
+          static_cast<double>(
+            center_selection.y())) /
+        static_cast<double>(
+          center_selection.z());
+
+
+      if (
+        axis_ratio >
+        max_axis_ratio_)
+      {
+        continue;
+      }
+
+
+      candidate.score =
+        axis_ratio +
+        0.02 *
+        static_cast<double>(
+          center_selection.z());
+
+
       if (
         candidate.score <
         best_candidate.score)
@@ -1001,105 +1531,56 @@ private:
 
 
     // ========================================================
-    // 发布最终目标cluster
+    // 发布最终目标cluster；其frame_id已经是World
     // ========================================================
 
     publishCloud(
       target_cloud_pub_,
       best_candidate.cloud,
-      message->header);
+      world_header);
 
 
     // ========================================================
-    // 相机坐标系中的目标Pose
-    // ========================================================
-
-    geometry_msgs::msg::PoseStamped
-      pose_camera;
-
-
-    pose_camera.header =
-      message->header;
-
-
-    pose_camera.pose.position.x =
-      best_candidate.center.x();
-
-    pose_camera.pose.position.y =
-      best_candidate.center.y();
-
-    pose_camera.pose.position.z =
-      best_candidate.center.z();
-
-
-    Eigen::Quaternionf
-      quaternion_camera(
-        best_candidate.rotation);
-
-
-    quaternion_camera.normalize();
-
-
-    pose_camera.pose.orientation.x =
-      quaternion_camera.x();
-
-    pose_camera.pose.orientation.y =
-      quaternion_camera.y();
-
-    pose_camera.pose.orientation.z =
-      quaternion_camera.z();
-
-    pose_camera.pose.orientation.w =
-      quaternion_camera.w();
-
-
-    // ========================================================
-    // TF：
-    //
-    // depth_camera_optical_frame
-    //            ↓
-    //           world
-    //
-    // 这里必须使用点云自身的timestamp。
+    // World坐标系中的目标Pose
     // ========================================================
 
     geometry_msgs::msg::PoseStamped
       pose_output;
 
 
-    try
-    {
-      const auto transform =
-        tf_buffer_->lookupTransform(
-          output_frame_,
-          message->header.frame_id,
-          message_time,
-          rclcpp::Duration::from_seconds(
-            tf_timeout_));
+    pose_output.header =
+      world_header;
 
 
-      tf2::doTransform(
-        pose_camera,
-        pose_output,
-        transform);
-    }
-    catch (
-      const tf2::TransformException &
-        exception)
-    {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(),
-        *get_clock(),
-        2000,
-        "TF转换失败 %s -> %s: %s",
-        message->header.frame_id.c_str(),
-        output_frame_.c_str(),
-        exception.what());
+    pose_output.pose.position.x =
+      best_candidate.center.x();
 
-      handleDetectionMiss();
+    pose_output.pose.position.y =
+      best_candidate.center.y();
 
-      return;
-    }
+    pose_output.pose.position.z =
+      best_candidate.center.z();
+
+
+    Eigen::Quaternionf
+      quaternion_world(
+        best_candidate.rotation);
+
+
+    quaternion_world.normalize();
+
+
+    pose_output.pose.orientation.x =
+      quaternion_world.x();
+
+    pose_output.pose.orientation.y =
+      quaternion_world.y();
+
+    pose_output.pose.orientation.z =
+      quaternion_world.z();
+
+    pose_output.pose.orientation.w =
+      quaternion_world.w();
 
 
     // ========================================================
@@ -1118,7 +1599,10 @@ private:
 
 
     // ========================================================
-    // 平滑
+    // 可选EMA
+    //
+    // 默认smoothing_alpha=1.0，因此几何精度主要来自多帧点云融合，
+    // 不再依靠“先估计Pose/Size再平均”来掩盖单帧误差。
     // ========================================================
 
     updateFilteredEstimate(
@@ -1171,7 +1655,7 @@ private:
 
 
     // ========================================================
-    // 把cluster投影到桌面，并计算每个点高于桌面的高度
+    // 把World cluster投影到桌面，并计算每个点高于桌面的高度
     // ========================================================
 
     std::vector<Eigen::Vector3f>
@@ -1198,7 +1682,7 @@ private:
       const auto & point :
       cluster->points)
     {
-      Eigen::Vector3f p(
+      const Eigen::Vector3f p(
         point.x,
         point.y,
         point.z);
@@ -1210,8 +1694,7 @@ private:
 
 
       // 只考虑桌面上方的点。
-      //
-      // 少量噪声可能落在平面下面。
+      // 少量噪声可能落在拟合平面下面。
       if (height <= 0.0f)
       {
         continue;
@@ -1253,8 +1736,6 @@ private:
 
     // ========================================================
     // 用95百分位估计物体高度
-    //
-    // 比直接使用max更不容易被离群点影响。
     // ========================================================
 
     const float object_height =
@@ -1274,7 +1755,7 @@ private:
 
 
     // ========================================================
-    // 计算投影点的协方差
+    // 计算桌面投影点的协方差
     // ========================================================
 
     Eigen::Matrix3f covariance =
@@ -1314,26 +1795,93 @@ private:
     }
 
 
+    const auto eigenvalues =
+      eigen_solver.eigenvalues();
+
+
+    // 最大两个特征值对应桌面内的两个方向。
+    const float lambda_major =
+      eigenvalues(2);
+
+    const float lambda_minor =
+      eigenvalues(1);
+
+
+    const float anisotropy =
+      (
+        lambda_major -
+        lambda_minor
+      ) /
+      std::max(
+        lambda_major,
+        1e-6f);
+
+
     // ========================================================
-    // 最大特征值方向作为物体X轴
+    // 稳定物体X轴
+    //
+    // 近似正方形：PCA yaw不可观测，固定使用World X方向。
+    // 明显长方形：使用PCA主轴。
     // ========================================================
 
-    Eigen::Vector3f axis_x =
-      eigen_solver
-        .eigenvectors()
-        .col(2);
+    Eigen::Vector3f axis_x;
 
 
-    // 再次投影到桌面上，避免数值误差产生法向分量
-    axis_x -=
-      plane_normal *
-      axis_x.dot(
-        plane_normal);
+    const float anisotropy_threshold =
+      static_cast<float>(
+        std::clamp(
+          pca_anisotropy_threshold_,
+          0.0,
+          1.0));
 
 
-    if (
-      axis_x.norm() <
-      1e-5f)
+    if (anisotropy < anisotropy_threshold)
+    {
+      axis_x =
+        Eigen::Vector3f(
+          1.0f,
+          0.0f,
+          0.0f);
+
+
+      // 将World X投影到桌面。
+      axis_x -=
+        plane_normal *
+        axis_x.dot(
+          plane_normal);
+
+
+      // 极端情况下桌面法向接近World X，则退化为World Y。
+      if (axis_x.norm() < 1e-5f)
+      {
+        axis_x =
+          Eigen::Vector3f(
+            0.0f,
+            1.0f,
+            0.0f);
+
+        axis_x -=
+          plane_normal *
+          axis_x.dot(
+            plane_normal);
+      }
+    }
+    else
+    {
+      axis_x =
+        eigen_solver
+          .eigenvectors()
+          .col(2);
+
+
+      axis_x -=
+        plane_normal *
+        axis_x.dot(
+          plane_normal);
+    }
+
+
+    if (axis_x.norm() < 1e-5f)
     {
       return false;
     }
@@ -1343,51 +1891,66 @@ private:
 
 
     // ========================================================
-    // 减少PCA方向180°随机翻转
-    //
-    // 使用相机X轴在桌面上的投影作为参考方向。
+    // PCA主轴有180°符号二义性。
+    // 使用World X / Y作为固定参考，不再依赖相机姿态。
     // ========================================================
 
-    Eigen::Vector3f reference_axis(
-      1.0f,
-      0.0f,
-      0.0f);
-
-
-    reference_axis -=
-      plane_normal *
-      reference_axis.dot(
-        plane_normal);
-
-
-    if (
-      reference_axis.norm() <
-      0.1f)
+    if (anisotropy >= anisotropy_threshold)
     {
-      reference_axis =
-        Eigen::Vector3f(
-          0.0f,
-          1.0f,
-          0.0f);
+      Eigen::Vector3f world_x(
+        1.0f,
+        0.0f,
+        0.0f);
 
-      reference_axis -=
+      Eigen::Vector3f world_y(
+        0.0f,
+        1.0f,
+        0.0f);
+
+
+      world_x -=
         plane_normal *
-        reference_axis.dot(
+        world_x.dot(
           plane_normal);
-    }
+
+      world_y -=
+        plane_normal *
+        world_y.dot(
+          plane_normal);
 
 
-    if (
-      reference_axis.norm() >
-      1e-5f)
-    {
-      reference_axis.normalize();
+      if (world_x.norm() > 1e-5f)
+      {
+        world_x.normalize();
+      }
+
+      if (world_y.norm() > 1e-5f)
+      {
+        world_y.normalize();
+      }
 
 
-      if (
+      const float dot_x =
         axis_x.dot(
-          reference_axis) <
-        0.0f)
+          world_x);
+
+      const float dot_y =
+        axis_x.dot(
+          world_y);
+
+
+      // 选与主轴更接近的World轴决定符号，减少接近World Y时的随机翻转。
+      if (
+        std::abs(dot_x) >=
+        std::abs(dot_y))
+      {
+        if (dot_x < 0.0f)
+        {
+          axis_x =
+            -axis_x;
+        }
+      }
+      else if (dot_y < 0.0f)
       {
         axis_x =
           -axis_x;
@@ -1406,9 +1969,7 @@ private:
         axis_x);
 
 
-    if (
-      axis_y.norm() <
-      1e-5f)
+    if (axis_y.norm() < 1e-5f)
     {
       return false;
     }
@@ -1417,54 +1978,90 @@ private:
     axis_y.normalize();
 
 
+    // 再正交化一次，保证Rotation严格接近正交矩阵。
+    axis_x =
+      axis_y.cross(
+        plane_normal);
+
+    axis_x.normalize();
+
+
     // ========================================================
-    // 计算物体在桌面上的二维包围盒
+    // 使用2% / 98%鲁棒百分位估计平面方向尺寸
+    //
+    // 不再直接使用min/max，避免少量离群点显著放大CollisionObject。
     // ========================================================
 
-    float min_u =
-      std::numeric_limits<float>::max();
+    std::vector<float>
+      u_values;
 
-    float max_u =
-      std::numeric_limits<float>::lowest();
+    std::vector<float>
+      v_values;
 
-    float min_v =
-      std::numeric_limits<float>::max();
 
-    float max_v =
-      std::numeric_limits<float>::lowest();
+    u_values.reserve(
+      projected_points.size());
+
+    v_values.reserve(
+      projected_points.size());
 
 
     for (
       const auto & point :
       projected_points)
     {
-      const float u =
-        axis_x.dot(point);
+      u_values.push_back(
+        axis_x.dot(point));
 
-      const float v =
-        axis_y.dot(point);
-
-
-      min_u =
-        std::min(
-          min_u,
-          u);
-
-      max_u =
-        std::max(
-          max_u,
-          u);
-
-      min_v =
-        std::min(
-          min_v,
-          v);
-
-      max_v =
-        std::max(
-          max_v,
-          v);
+      v_values.push_back(
+        axis_y.dot(point));
     }
+
+
+    double percentile_low =
+      std::clamp(
+        planar_percentile_low_,
+        0.0,
+        1.0);
+
+    double percentile_high =
+      std::clamp(
+        planar_percentile_high_,
+        0.0,
+        1.0);
+
+
+    if (
+      percentile_high <=
+      percentile_low)
+    {
+      percentile_low =
+        0.02;
+
+      percentile_high =
+        0.98;
+    }
+
+
+    const float min_u =
+      percentile(
+        u_values,
+        percentile_low);
+
+    const float max_u =
+      percentile(
+        u_values,
+        percentile_high);
+
+    const float min_v =
+      percentile(
+        v_values,
+        percentile_low);
+
+    const float max_v =
+      percentile(
+        v_values,
+        percentile_high);
 
 
     const float size_x =
@@ -1493,19 +2090,9 @@ private:
     // ========================================================
     // 计算物体体积中心
     //
-    // 平面上距相机最近的原点：
-    //
-    // p0 = -d*n
-    //
-    // 物体底面中心：
-    //
-    // p_bottom =
-    //   p0 + u_center*x + v_center*y
-    //
-    // 物体中心：
-    //
-    // p_center =
-    //   p_bottom + height/2*n
+    // plane_origin = -d*n
+    // bottom_center = plane_origin + u*x + v*y
+    // object_center = bottom_center + height/2*n
     // ========================================================
 
     const float center_u =
@@ -1541,54 +2128,7 @@ private:
 
 
     // ========================================================
-    // 目标必须位于相机前方
-    // ========================================================
-
-    if (
-      object_center.z() <=
-      1e-4f)
-    {
-      return false;
-    }
-
-
-    // ========================================================
-    // 计算目标距相机光轴的角度代价
-    //
-    // 越接近图像中心，代价越小。
-    // ========================================================
-
-    const double axis_ratio =
-      std::hypot(
-        object_center.x(),
-        object_center.y()) /
-      object_center.z();
-
-
-    if (
-      axis_ratio >
-      max_axis_ratio_)
-    {
-      return false;
-    }
-
-
-    // ========================================================
-    // 当前简单场景：
-    //
-    // 优先选择最接近相机光轴的目标。
-    //
-    // 深度只作为一个很弱的次级代价。
-    // ========================================================
-
-    const double score =
-      axis_ratio +
-      0.02 *
-      object_center.z();
-
-
-    // ========================================================
-    // 输出
+    // 输出World坐标系结果
     // ========================================================
 
     candidate.cloud =
@@ -1617,7 +2157,8 @@ private:
 
 
     candidate.score =
-      score;
+      std::numeric_limits<
+        double>::infinity();
 
 
     return true;
@@ -2342,6 +2883,9 @@ private:
         target_attached_ =
           false;
 
+        // detach后重新从新鲜点云开始融合。
+        world_cloud_history_.clear();
+
         RCLCPP_INFO(
           get_logger(),
           "%s已从机器人detach",
@@ -2354,6 +2898,9 @@ private:
 
         target_in_scene_ =
           false;
+
+        // 目标已经随机器人运动，旧的静态World融合点云不能继续保留。
+        world_cloud_history_.clear();
 
         RCLCPP_INFO(
           get_logger(),
@@ -2414,6 +2961,19 @@ private:
     output_frame_;
 
   std::string
+    selection_frame_;
+
+  bool
+    input_is_fused_cloud_;
+
+  double workspace_min_x_;
+  double workspace_max_x_;
+  double workspace_min_y_;
+  double workspace_max_y_;
+  double workspace_min_z_;
+  double workspace_max_z_;
+
+  std::string
     target_id_;
 
 
@@ -2438,6 +2998,9 @@ private:
 
   int
     plane_min_inliers_;
+
+  double
+    plane_max_tilt_deg_;
 
 
   double
@@ -2465,6 +3028,23 @@ private:
 
   double
     max_axis_ratio_;
+
+
+  double
+    pca_anisotropy_threshold_;
+
+  double
+    planar_percentile_low_;
+
+  double
+    planar_percentile_high_;
+
+
+  int
+    fusion_frames_;
+
+  double
+    fusion_max_age_;
 
 
   double
@@ -2593,6 +3173,14 @@ private:
   bool
     target_in_scene_ =
       false;
+
+
+  // ==========================================================
+  // World多帧融合状态
+  // ==========================================================
+
+  std::deque<WorldCloudFrame>
+    world_cloud_history_;
 
 
   // ==========================================================
