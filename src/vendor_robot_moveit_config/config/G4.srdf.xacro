@@ -40,7 +40,7 @@
        用于在规划中模拟夹持接触；MTC 会显式允许手指与目标碰撞。
        closed 保留为空载时两指几乎相合的状态。 -->
   <group_state name="grasp" group="gripper">
-    <joint name="${prefix}gripper_left_joint" value="-0.027"/>
+    <joint name="${prefix}gripper_left_joint" value="-0.026"/>
   </group_state>
 
   <disable_collisions link1="${prefix}Link1" link2="${prefix}Link2" reason="Adjacent"/>

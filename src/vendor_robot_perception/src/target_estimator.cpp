@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -9,7 +10,6 @@
 #include <vector>
 
 #include <Eigen/Core>
-#include <Eigen/Eigenvalues>
 #include <Eigen/Geometry>
 
 
@@ -639,6 +639,388 @@ public:
 private:
 
   // ==========================================================
+  // 2D minimum-area rectangle
+  //
+  // projected cluster -> convex hull -> enumerate hull-edge
+  // orientations -> minimum-area rectangle.
+  //
+  // Compared with PCA:
+  // - the orientation is determined by the object boundary;
+  // - incomplete / asymmetric sampling does not rotate the box merely
+  //   because the point covariance changes;
+  // - the resulting XY box is the tightest oriented rectangle of the
+  //   projected cluster (subject to the actual point-cloud boundary).
+  // ==========================================================
+
+  struct Point2D
+  {
+    double x{0.0};
+    double y{0.0};
+  };
+
+
+  struct MinAreaRect2D
+  {
+    bool valid{false};
+
+    // Rectangle center in the chosen 2D table basis.
+    double center_x{0.0};
+    double center_y{0.0};
+
+    // Unit rectangle axes in the same 2D table basis.
+    double ux{1.0};
+    double uy{0.0};
+    double vx{0.0};
+    double vy{1.0};
+
+    double size_u{0.0};
+    double size_v{0.0};
+    double area{
+      std::numeric_limits<double>::infinity()};
+  };
+
+
+  static double cross2D(
+    const Point2D & origin,
+    const Point2D & a,
+    const Point2D & b)
+  {
+    return
+      (a.x - origin.x) *
+        (b.y - origin.y) -
+      (a.y - origin.y) *
+        (b.x - origin.x);
+  }
+
+
+  static std::vector<Point2D>
+  convexHull2D(
+    std::vector<Point2D> points)
+  {
+    constexpr double epsilon =
+      1e-9;
+
+
+    if (points.size() <= 2)
+    {
+      return points;
+    }
+
+
+    std::sort(
+      points.begin(),
+      points.end(),
+      [](
+        const Point2D & a,
+        const Point2D & b)
+      {
+        if (a.x < b.x)
+        {
+          return true;
+        }
+
+        if (a.x > b.x)
+        {
+          return false;
+        }
+
+        return a.y < b.y;
+      });
+
+
+    std::vector<Point2D>
+      unique_points;
+
+    unique_points.reserve(
+      points.size());
+
+
+    for (
+      const auto & point :
+      points)
+    {
+      if (
+        unique_points.empty() ||
+        std::abs(
+          point.x -
+          unique_points.back().x) >
+          epsilon ||
+        std::abs(
+          point.y -
+          unique_points.back().y) >
+          epsilon)
+      {
+        unique_points.push_back(
+          point);
+      }
+    }
+
+
+    if (unique_points.size() <= 2)
+    {
+      return unique_points;
+    }
+
+
+    std::vector<Point2D>
+      hull(
+        2 *
+        unique_points.size());
+
+
+    std::size_t k =
+      0;
+
+
+    // Lower hull.
+    for (
+      const auto & point :
+      unique_points)
+    {
+      while (
+        k >= 2 &&
+        cross2D(
+          hull[k - 2],
+          hull[k - 1],
+          point) <= 0.0)
+      {
+        --k;
+      }
+
+      hull[k++] =
+        point;
+    }
+
+
+    // Upper hull.
+    const std::size_t lower_size =
+      k;
+
+
+    for (
+      std::size_t i =
+        unique_points.size() - 1;
+      i > 0;
+      --i)
+    {
+      const auto & point =
+        unique_points[i - 1];
+
+      while (
+        k > lower_size &&
+        cross2D(
+          hull[k - 2],
+          hull[k - 1],
+          point) <= 0.0)
+      {
+        --k;
+      }
+
+      hull[k++] =
+        point;
+    }
+
+
+    if (k > 1)
+    {
+      --k;
+    }
+
+
+    hull.resize(
+      k);
+
+
+    return hull;
+  }
+
+
+  static MinAreaRect2D
+  minimumAreaRectangle2D(
+    const std::vector<Point2D> & points)
+  {
+    MinAreaRect2D
+      best;
+
+
+    const auto hull =
+      convexHull2D(
+        points);
+
+
+    if (hull.size() < 2)
+    {
+      return best;
+    }
+
+
+    for (
+      std::size_t i = 0;
+      i < hull.size();
+      ++i)
+    {
+      const auto & a =
+        hull[i];
+
+      const auto & b =
+        hull[
+          (i + 1) %
+          hull.size()];
+
+
+      const double edge_x =
+        b.x - a.x;
+
+      const double edge_y =
+        b.y - a.y;
+
+
+      const double edge_length =
+        std::hypot(
+          edge_x,
+          edge_y);
+
+
+      if (edge_length < 1e-9)
+      {
+        continue;
+      }
+
+
+      // u follows a hull edge; v is its +90 deg perpendicular.
+      const double ux =
+        edge_x /
+        edge_length;
+
+      const double uy =
+        edge_y /
+        edge_length;
+
+      const double vx =
+        -uy;
+
+      const double vy =
+        ux;
+
+
+      double min_u =
+        std::numeric_limits<double>::infinity();
+
+      double max_u =
+        -std::numeric_limits<double>::infinity();
+
+      double min_v =
+        std::numeric_limits<double>::infinity();
+
+      double max_v =
+        -std::numeric_limits<double>::infinity();
+
+
+      for (
+        const auto & point :
+        hull)
+      {
+        const double u =
+          point.x * ux +
+          point.y * uy;
+
+        const double v =
+          point.x * vx +
+          point.y * vy;
+
+
+        min_u =
+          std::min(
+            min_u,
+            u);
+
+        max_u =
+          std::max(
+            max_u,
+            u);
+
+        min_v =
+          std::min(
+            min_v,
+            v);
+
+        max_v =
+          std::max(
+            max_v,
+            v);
+      }
+
+
+      const double size_u =
+        max_u -
+        min_u;
+
+      const double size_v =
+        max_v -
+        min_v;
+
+      const double area =
+        size_u *
+        size_v;
+
+
+      if (
+        !std::isfinite(area) ||
+        area >=
+          best.area)
+      {
+        continue;
+      }
+
+
+      const double center_u =
+        0.5 *
+        (min_u + max_u);
+
+      const double center_v =
+        0.5 *
+        (min_v + max_v);
+
+
+      best.valid =
+        true;
+
+      best.ux =
+        ux;
+
+      best.uy =
+        uy;
+
+      best.vx =
+        vx;
+
+      best.vy =
+        vy;
+
+      best.size_u =
+        size_u;
+
+      best.size_v =
+        size_v;
+
+      best.center_x =
+        center_u * ux +
+        center_v * vx;
+
+      best.center_y =
+        center_u * uy +
+        center_v * vy;
+
+      best.area =
+        area;
+    }
+
+
+    return best;
+  }
+
+
+  // ==========================================================
   // 主点云回调
   // ==========================================================
 
@@ -763,7 +1145,7 @@ private:
     // 使用点云自身timestamp查询 Camera -> World TF
     //
     // 从这里开始：
-    //   桌面分割 / 聚类 / PCA / OBB / Pose / Size
+    //   桌面分割 / 聚类 / minimum-area rectangle / Pose / Size
     // 全部在output_frame_中进行。
     // ========================================================
 
@@ -1008,7 +1390,7 @@ private:
     // ========================================================
     // 10~20帧World点云融合
     //
-    // 先融合，再VoxelGrid，再做RANSAC/Cluster/OBB。
+    // 先融合，再VoxelGrid，再做RANSAC/Cluster/minimum-area rectangle。
     // 这样多帧能补足单帧缺失表面，而不是只对最终Pose/Size做EMA。
     // ========================================================
 
@@ -1655,27 +2037,84 @@ private:
 
 
     // ========================================================
-    // 把World cluster投影到桌面，并计算每个点高于桌面的高度
+    // Build a deterministic 2D basis on the table plane.
+    //
+    // This basis is only used to express projected points in 2D.
+    // The final object axes come from the minimum-area rectangle.
     // ========================================================
 
-    std::vector<Eigen::Vector3f>
-      projected_points;
+    Eigen::Vector3f basis_x(
+      1.0f,
+      0.0f,
+      0.0f);
 
+
+    basis_x -=
+      plane_normal *
+      basis_x.dot(
+        plane_normal);
+
+
+    if (basis_x.norm() < 1e-5f)
+    {
+      basis_x =
+        Eigen::Vector3f(
+          0.0f,
+          1.0f,
+          0.0f);
+
+      basis_x -=
+        plane_normal *
+        basis_x.dot(
+          plane_normal);
+    }
+
+
+    if (basis_x.norm() < 1e-5f)
+    {
+      return false;
+    }
+
+
+    basis_x.normalize();
+
+
+    Eigen::Vector3f basis_y =
+      plane_normal.cross(
+        basis_x);
+
+
+    if (basis_y.norm() < 1e-5f)
+    {
+      return false;
+    }
+
+
+    basis_y.normalize();
+
+
+    const Eigen::Vector3f
+      plane_origin =
+        -plane_d *
+        plane_normal;
+
+
+    // ========================================================
+    // Project cluster to the table and collect heights.
+    // ========================================================
+
+    std::vector<Point2D>
+      projected_2d;
 
     std::vector<float>
       heights;
 
 
-    projected_points.reserve(
+    projected_2d.reserve(
       cluster->size());
 
     heights.reserve(
       cluster->size());
-
-
-    Eigen::Vector3f
-      mean_projected =
-        Eigen::Vector3f::Zero();
 
 
     for (
@@ -1693,35 +2132,38 @@ private:
         plane_d;
 
 
-      // 只考虑桌面上方的点。
-      // 少量噪声可能落在拟合平面下面。
+      // Small fitting noise may lie slightly below the table.
       if (height <= 0.0f)
       {
         continue;
       }
 
 
-      const Eigen::Vector3f
-        projected =
-          p -
-          height *
-          plane_normal;
+      const Eigen::Vector3f projected =
+        p -
+        height *
+        plane_normal;
 
 
-      projected_points.push_back(
-        projected);
+      const Eigen::Vector3f relative =
+        projected -
+        plane_origin;
+
+
+      projected_2d.push_back(
+        Point2D{
+          static_cast<double>(
+            basis_x.dot(relative)),
+          static_cast<double>(
+            basis_y.dot(relative))});
 
       heights.push_back(
         height);
-
-
-      mean_projected +=
-        projected;
     }
 
 
     if (
-      projected_points.size() <
+      projected_2d.size() <
       static_cast<std::size_t>(
         min_cluster_size_))
     {
@@ -1729,13 +2171,8 @@ private:
     }
 
 
-    mean_projected /=
-      static_cast<float>(
-        projected_points.size());
-
-
     // ========================================================
-    // 用95百分位估计物体高度
+    // Height remains a robust percentile of distance above table.
     // ========================================================
 
     const float object_height =
@@ -1755,322 +2192,87 @@ private:
 
 
     // ========================================================
-    // 计算桌面投影点的协方差
+    // Minimum-area rectangle on the projected cluster.
+    //
+    // No covariance / PCA direction is used here.
     // ========================================================
 
-    Eigen::Matrix3f covariance =
-      Eigen::Matrix3f::Zero();
+    const MinAreaRect2D rectangle =
+      minimumAreaRectangle2D(
+        projected_2d);
 
 
-    for (
-      const auto & point :
-      projected_points)
+    if (!rectangle.valid)
     {
-      const Eigen::Vector3f delta =
-        point -
-        mean_projected;
-
-      covariance +=
-        delta *
-        delta.transpose();
+      return false;
     }
 
 
-    covariance /=
+    Eigen::Vector3f axis_u =
       static_cast<float>(
-        projected_points.size());
+        rectangle.ux) *
+        basis_x +
+      static_cast<float>(
+        rectangle.uy) *
+        basis_y;
 
 
-    Eigen::SelfAdjointEigenSolver<
-      Eigen::Matrix3f>
-      eigen_solver(
-        covariance);
+    Eigen::Vector3f axis_v =
+      static_cast<float>(
+        rectangle.vx) *
+        basis_x +
+      static_cast<float>(
+        rectangle.vy) *
+        basis_y;
 
 
     if (
-      eigen_solver.info() !=
-      Eigen::Success)
+      axis_u.norm() < 1e-5f ||
+      axis_v.norm() < 1e-5f)
     {
       return false;
     }
 
 
-    const auto eigenvalues =
-      eigen_solver.eigenvalues();
+    axis_u.normalize();
+
+    axis_v.normalize();
 
 
-    // 最大两个特征值对应桌面内的两个方向。
-    const float lambda_major =
-      eigenvalues(2);
-
-    const float lambda_minor =
-      eigenvalues(1);
-
-
-    const float anisotropy =
-      (
-        lambda_major -
-        lambda_minor
-      ) /
-      std::max(
-        lambda_major,
-        1e-6f);
-
-
-    // ========================================================
-    // 稳定物体X轴
-    //
-    // 近似正方形：PCA yaw不可观测，固定使用World X方向。
-    // 明显长方形：使用PCA主轴。
-    // ========================================================
-
-    Eigen::Vector3f axis_x;
-
-
-    const float anisotropy_threshold =
+    float size_x =
       static_cast<float>(
-        std::clamp(
-          pca_anisotropy_threshold_,
-          0.0,
-          1.0));
+        rectangle.size_u);
+
+    float size_y =
+      static_cast<float>(
+        rectangle.size_v);
 
 
-    if (anisotropy < anisotropy_threshold)
-    {
-      axis_x =
-        Eigen::Vector3f(
-          1.0f,
-          0.0f,
-          0.0f);
-
-
-      // 将World X投影到桌面。
-      axis_x -=
-        plane_normal *
-        axis_x.dot(
-          plane_normal);
-
-
-      // 极端情况下桌面法向接近World X，则退化为World Y。
-      if (axis_x.norm() < 1e-5f)
-      {
-        axis_x =
-          Eigen::Vector3f(
-            0.0f,
-            1.0f,
-            0.0f);
-
-        axis_x -=
-          plane_normal *
-          axis_x.dot(
-            plane_normal);
-      }
-    }
-    else
-    {
-      axis_x =
-        eigen_solver
-          .eigenvectors()
-          .col(2);
-
-
-      axis_x -=
-        plane_normal *
-        axis_x.dot(
-          plane_normal);
-    }
-
-
-    if (axis_x.norm() < 1e-5f)
-    {
-      return false;
-    }
-
-
-    axis_x.normalize();
-
-
-    // ========================================================
-    // PCA主轴有180°符号二义性。
-    // 使用World X / Y作为固定参考，不再依赖相机姿态。
-    // ========================================================
-
-    if (anisotropy >= anisotropy_threshold)
-    {
-      Eigen::Vector3f world_x(
-        1.0f,
-        0.0f,
-        0.0f);
-
-      Eigen::Vector3f world_y(
-        0.0f,
-        1.0f,
-        0.0f);
-
-
-      world_x -=
-        plane_normal *
-        world_x.dot(
-          plane_normal);
-
-      world_y -=
-        plane_normal *
-        world_y.dot(
-          plane_normal);
-
-
-      if (world_x.norm() > 1e-5f)
-      {
-        world_x.normalize();
-      }
-
-      if (world_y.norm() > 1e-5f)
-      {
-        world_y.normalize();
-      }
-
-
-      const float dot_x =
-        axis_x.dot(
-          world_x);
-
-      const float dot_y =
-        axis_x.dot(
-          world_y);
-
-
-      // 选与主轴更接近的World轴决定符号，减少接近World Y时的随机翻转。
-      if (
-        std::abs(dot_x) >=
-        std::abs(dot_y))
-      {
-        if (dot_x < 0.0f)
-        {
-          axis_x =
-            -axis_x;
-        }
-      }
-      else if (dot_y < 0.0f)
-      {
-        axis_x =
-          -axis_x;
-      }
-    }
-
-
-    // ========================================================
-    // 创建右手坐标系
+    // Keep object X as the longer planar side.
     //
-    // X × Y = Z
-    // ========================================================
+    // This makes size/orientation semantics stable for MTC and also
+    // removes the 90 deg alternative representation of the same box.
+    Eigen::Vector3f axis_x =
+      axis_u;
 
     Eigen::Vector3f axis_y =
-      plane_normal.cross(
-        axis_x);
+      axis_v;
 
 
-    if (axis_y.norm() < 1e-5f)
+    if (size_y > size_x)
     {
-      return false;
+      std::swap(
+        size_x,
+        size_y);
+
+      axis_x =
+        axis_v;
+
+      // Preserve a right-handed frame:
+      // axis_x x axis_y = plane_normal.
+      axis_y =
+        -axis_u;
     }
-
-
-    axis_y.normalize();
-
-
-    // 再正交化一次，保证Rotation严格接近正交矩阵。
-    axis_x =
-      axis_y.cross(
-        plane_normal);
-
-    axis_x.normalize();
-
-
-    // ========================================================
-    // 使用2% / 98%鲁棒百分位估计平面方向尺寸
-    //
-    // 不再直接使用min/max，避免少量离群点显著放大CollisionObject。
-    // ========================================================
-
-    std::vector<float>
-      u_values;
-
-    std::vector<float>
-      v_values;
-
-
-    u_values.reserve(
-      projected_points.size());
-
-    v_values.reserve(
-      projected_points.size());
-
-
-    for (
-      const auto & point :
-      projected_points)
-    {
-      u_values.push_back(
-        axis_x.dot(point));
-
-      v_values.push_back(
-        axis_y.dot(point));
-    }
-
-
-    double percentile_low =
-      std::clamp(
-        planar_percentile_low_,
-        0.0,
-        1.0);
-
-    double percentile_high =
-      std::clamp(
-        planar_percentile_high_,
-        0.0,
-        1.0);
-
-
-    if (
-      percentile_high <=
-      percentile_low)
-    {
-      percentile_low =
-        0.02;
-
-      percentile_high =
-        0.98;
-    }
-
-
-    const float min_u =
-      percentile(
-        u_values,
-        percentile_low);
-
-    const float max_u =
-      percentile(
-        u_values,
-        percentile_high);
-
-    const float min_v =
-      percentile(
-        v_values,
-        percentile_low);
-
-    const float max_v =
-      percentile(
-        v_values,
-        percentile_high);
-
-
-    const float size_x =
-      max_u -
-      min_u;
-
-    const float size_y =
-      max_v -
-      min_v;
 
 
     if (
@@ -2088,35 +2290,116 @@ private:
 
 
     // ========================================================
-    // 计算物体体积中心
+    // Stabilize the remaining 180 deg sign ambiguity.
     //
-    // plane_origin = -d*n
-    // bottom_center = plane_origin + u*x + v*y
-    // object_center = bottom_center + height/2*n
+    // A rectangle has identical geometry after a 180 deg rotation.
+    // Select the sign closest to projected World X / Y.
     // ========================================================
 
-    const float center_u =
-      0.5f *
-      (min_u + max_u);
+    Eigen::Vector3f world_x(
+      1.0f,
+      0.0f,
+      0.0f);
 
-    const float center_v =
-      0.5f *
-      (min_v + max_v);
+    Eigen::Vector3f world_y(
+      0.0f,
+      1.0f,
+      0.0f);
 
 
-    const Eigen::Vector3f
-      plane_origin =
-        -plane_d *
-        plane_normal;
+    world_x -=
+      plane_normal *
+      world_x.dot(
+        plane_normal);
 
+    world_y -=
+      plane_normal *
+      world_y.dot(
+        plane_normal);
+
+
+    if (world_x.norm() > 1e-5f)
+    {
+      world_x.normalize();
+    }
+
+    if (world_y.norm() > 1e-5f)
+    {
+      world_y.normalize();
+    }
+
+
+    const float dot_x =
+      axis_x.dot(
+        world_x);
+
+    const float dot_y =
+      axis_x.dot(
+        world_y);
+
+
+    bool flip_axes =
+      false;
+
+
+    if (
+      std::abs(dot_x) >=
+      std::abs(dot_y))
+    {
+      flip_axes =
+        dot_x < 0.0f;
+    }
+    else
+    {
+      flip_axes =
+        dot_y < 0.0f;
+    }
+
+
+    if (flip_axes)
+    {
+      axis_x =
+        -axis_x;
+
+      axis_y =
+        -axis_y;
+    }
+
+
+    // Re-orthogonalize using the table normal.
+    axis_y =
+      plane_normal.cross(
+        axis_x);
+
+
+    if (axis_y.norm() < 1e-5f)
+    {
+      return false;
+    }
+
+
+    axis_y.normalize();
+
+    axis_x =
+      axis_y.cross(
+        plane_normal);
+
+    axis_x.normalize();
+
+
+    // ========================================================
+    // Rectangle center -> world.
+    // ========================================================
 
     const Eigen::Vector3f
       bottom_center =
         plane_origin +
-        center_u *
-        axis_x +
-        center_v *
-        axis_y;
+        static_cast<float>(
+          rectangle.center_x) *
+          basis_x +
+        static_cast<float>(
+          rectangle.center_y) *
+          basis_y;
 
 
     const Eigen::Vector3f
@@ -2128,7 +2411,7 @@ private:
 
 
     // ========================================================
-    // 输出World坐标系结果
+    // Output.
     // ========================================================
 
     candidate.cloud =
@@ -2163,7 +2446,6 @@ private:
 
     return true;
   }
-
 
   // ==========================================================
   // 百分位

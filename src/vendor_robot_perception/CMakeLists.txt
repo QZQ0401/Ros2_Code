@@ -83,6 +83,10 @@ add_executable(
   src/multi_camera_cloud_fusion.cpp
 )
 
+add_executable(
+  bin_estimator
+  src/bin_estimator.cpp
+)
 
 ament_target_dependencies(
   target_estimator
@@ -114,6 +118,25 @@ ament_target_dependencies(
   pcl_conversions
 )
 
+ament_target_dependencies(
+  bin_estimator
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  std_msgs
+  visualization_msgs
+
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+
+  pcl_conversions
+
+  moveit_msgs
+  shape_msgs
+  moveit_ros_planning_interface
+)
+
 
 target_include_directories(
   target_estimator
@@ -127,6 +150,11 @@ target_include_directories(
   ${PCL_INCLUDE_DIRS}
 )
 
+target_include_directories(
+  bin_estimator
+  PRIVATE
+  ${PCL_INCLUDE_DIRS}
+)
 
 target_link_libraries(
   target_estimator
@@ -135,6 +163,10 @@ target_link_libraries(
 
 target_link_libraries(
   multi_camera_cloud_fusion
+  ${PCL_LIBRARIES}
+)
+target_link_libraries(
+  bin_estimator
   ${PCL_LIBRARIES}
 )
 
@@ -151,6 +183,11 @@ target_compile_definitions(
   ${PCL_DEFINITIONS}
 )
 
+target_compile_definitions(
+  bin_estimator
+  PRIVATE
+  ${PCL_DEFINITIONS}
+)
 
 # ============================================================
 # 安装可执行程序
@@ -160,6 +197,7 @@ install(
   TARGETS
   target_estimator
   multi_camera_cloud_fusion
+  bin_estimator
   DESTINATION
   lib/${PROJECT_NAME}
 )

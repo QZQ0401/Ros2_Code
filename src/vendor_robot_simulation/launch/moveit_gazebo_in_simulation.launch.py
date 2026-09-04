@@ -226,9 +226,9 @@ def _setup(context):
         .trajectory_execution(
             file_path="config/moveit_controllers.yaml"
         )
-        .sensors_3d(
-            file_path="config/sensors_3d.yaml"
-        )
+        # .sensors_3d(
+        #     file_path="config/sensors_3d.yaml"
+        # )
         .planning_pipelines(
             pipelines=["ompl"]
         )
@@ -299,18 +299,18 @@ def _setup(context):
         # )
     ]
 
-    if start_perception:
-        moveit_nodes.append(
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    str(
-                        perception_share
-                        / "launch"
-                        / "target_estimator.launch.py"
-                    )
-                )
-            )
-        )
+    # if start_perception:
+    #     moveit_nodes.append(
+    #         IncludeLaunchDescription(
+    #             PythonLaunchDescriptionSource(
+    #                 str(
+    #                     perception_share
+    #                     / "launch"
+    #                     / "target_estimator.launch.py"
+    #                 )
+    #             )
+    #         )
+    #     )
 
     if start_move_l_server:
         moveit_nodes.append(

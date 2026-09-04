@@ -1,0 +1,37 @@
+bin_estimator:
+  ros__parameters:
+    use_sim_time: true
+
+    input_cloud_topic: /workspace/merged_points
+    output_frame: world
+    target_size_topic: /perception/target_size
+
+    # Search region; point cloud still determines the actual bin pose.
+    roi_min_x: -1.00
+    roi_max_x: -0.30
+    roi_min_y: 0.35
+    roi_max_y: 1.05
+    roi_min_z: 0.75
+    roi_max_z: 1.20
+
+    # Exact geometry from pick_scene.world
+    known_outer_x: 0.40
+    known_outer_y: 0.32
+    known_base_thickness: 0.03
+    known_wall_thickness: 0.025
+    known_wall_height: 0.16
+
+    # Detection sanity check only; final size is never taken from cloud.
+    min_observed_fraction: 0.55
+    max_observed_oversize: 0.08
+
+    wall_min_height: 0.025
+    wall_max_height: 0.35
+
+    fit_margin: 0.015
+    place_clearance: 0.005
+
+    # false: preserve original point-cloud / OctoMap logic
+    # true : add perceived bin as 5-box open CollisionObject
+    publish_to_planning_scene: false
+    collision_object_id: placement_bin_vision
