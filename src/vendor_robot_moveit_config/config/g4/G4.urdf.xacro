@@ -1,4 +1,4 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="G4">
-  <xacro:include filename="$(find vendor_robot_description)/urdf/g4.urdf.xacro"/>
+  <xacro:include filename="$(find vendor_robot_description)/urdf/g4/g4.urdf.xacro"/>
 </robot>
